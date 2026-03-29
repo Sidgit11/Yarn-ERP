@@ -2,7 +2,25 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #2C3E50;
+
+  /* Semantic colors */
+  --color-danger: #C0392B;
+  --color-primary: #2980B9;
+  --color-success: #27AE60;
+  --color-inventory: #8E44AD;
+  --color-activity: #E67E22;
+  --color-tax: #16A085;
+
+  /* Neutrals */
+  --color-bg: #FFFFFF;
+  --color-surface: #F8F9FA;
+  --color-surface-alt: #EBF5FB;
+  --color-border: #DEE2E6;
+  --color-text: #2C3E50;
+  --color-text-secondary: #6C757D;
+  --color-text-muted: #ADB5BD;
+  --color-header-bg: #1B4F72;
 }
 
 @theme inline {
@@ -22,5 +40,27 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Pulsing border for critical CC utilization */
+@keyframes pulse-border {
+  0%, 100% { border-color: #C0392B; }
+  50% { border-color: #E74C3C; }
+}
+.animate-pulse-border {
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+/* Bottom sheet slide-up animation */
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slide-up 250ms ease-out;
 }

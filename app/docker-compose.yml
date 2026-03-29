@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: syt_erp_db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: syt_erp
+      POSTGRES_USER: syt
+      POSTGRES_PASSWORD: syt_dev_password
+    volumes:
+      - syt_erp_data:/var/lib/postgresql/data
+
+volumes:
+  syt_erp_data:
