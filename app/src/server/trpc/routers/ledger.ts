@@ -34,48 +34,67 @@ export const ledgerRouter = router({
         ? allContacts.filter((c) => c.type === input.type)
         : allContacts;
 
+      // Pre-build index maps for O(1) lookups instead of O(N) per contact
+      const purchasesBySupplierId = new Map<string, typeof allPurchases>();
+      for (const p of allPurchases) {
+        const arr = purchasesBySupplierId.get(p.supplierId) ?? [];
+        arr.push(p);
+        purchasesBySupplierId.set(p.supplierId, arr);
+      }
+      const salesByBuyerId = new Map<string, typeof allSales>();
+      const salesByBrokerId = new Map<string, typeof allSales>();
+      for (const s of allSales) {
+        const buyerArr = salesByBuyerId.get(s.buyerId) ?? [];
+        buyerArr.push(s);
+        salesByBuyerId.set(s.buyerId, buyerArr);
+        if (s.viaBroker && s.brokerId) {
+          const brokerArr = salesByBrokerId.get(s.brokerId) ?? [];
+          brokerArr.push(s);
+          salesByBrokerId.set(s.brokerId, brokerArr);
+        }
+      }
+      const paymentsByPartyId = new Map<string, typeof allPayments>();
+      for (const pay of allPayments) {
+        const arr = paymentsByPartyId.get(pay.partyId) ?? [];
+        arr.push(pay);
+        paymentsByPartyId.set(pay.partyId, arr);
+      }
+
       return filteredContacts
         .map((contact) => {
           let totalBilled = D(0);
           let totalPaidOrReceived = D(0);
           let direction = "";
+          const contactPayments = paymentsByPartyId.get(contact.id) ?? [];
 
           if (contact.type === "Mill") {
-            const contactPurchases = allPurchases.filter(
-              (p) => p.supplierId === contact.id
-            );
+            const contactPurchases = purchasesBySupplierId.get(contact.id) ?? [];
             for (const p of contactPurchases) {
               const t = computePurchaseTotals(p);
               totalBilled = totalBilled.plus(t.grandTotal);
               totalPaidOrReceived = totalPaidOrReceived.plus(D(p.amountPaid));
             }
-            const paidPayments = allPayments.filter(
-              (pay) => pay.partyId === contact.id && pay.direction === "Paid"
-            );
-            for (const pay of paidPayments) {
-              totalPaidOrReceived = totalPaidOrReceived.plus(D(pay.amount));
+            for (const pay of contactPayments) {
+              if (pay.direction === "Paid") {
+                totalPaidOrReceived = totalPaidOrReceived.plus(D(pay.amount));
+              }
             }
             direction = "Payable";
           } else if (contact.type === "Buyer") {
-            const contactSales = allSales.filter(
-              (s) => s.buyerId === contact.id
-            );
+            const contactSales = salesByBuyerId.get(contact.id) ?? [];
             for (const s of contactSales) {
               const t = computeSaleTotals(s);
               totalBilled = totalBilled.plus(t.totalInclGst);
               totalPaidOrReceived = totalPaidOrReceived.plus(D(s.amountReceived));
             }
-            const receivedPayments = allPayments.filter(
-              (pay) => pay.partyId === contact.id && pay.direction === "Received"
-            );
-            for (const pay of receivedPayments) {
-              totalPaidOrReceived = totalPaidOrReceived.plus(D(pay.amount));
+            for (const pay of contactPayments) {
+              if (pay.direction === "Received") {
+                totalPaidOrReceived = totalPaidOrReceived.plus(D(pay.amount));
+              }
             }
             direction = "Receivable";
           } else if (contact.type === "Broker") {
-            const brokerSales = allSales.filter(
-              (s) => s.viaBroker && s.brokerId === contact.id
-            );
+            const brokerSales = salesByBrokerId.get(contact.id) ?? [];
             for (const s of brokerSales) {
               const t = computeSaleTotals(s);
               totalBilled = totalBilled.plus(
@@ -87,11 +106,10 @@ export const ledgerRouter = router({
                 )
               );
             }
-            const paidPayments = allPayments.filter(
-              (pay) => pay.partyId === contact.id && pay.direction === "Paid"
-            );
-            for (const pay of paidPayments) {
-              totalPaidOrReceived = totalPaidOrReceived.plus(D(pay.amount));
+            for (const pay of contactPayments) {
+              if (pay.direction === "Paid") {
+                totalPaidOrReceived = totalPaidOrReceived.plus(D(pay.amount));
+              }
             }
             direction = "Payable";
           }
@@ -100,24 +118,20 @@ export const ledgerRouter = router({
           const status = netBalance.lte(0) ? "Clear" : "Pending";
           if (netBalance.lt(0)) direction = "Overpaid";
 
-          // Days since oldest unpaid transaction
+          // Days since oldest transaction for this contact (already indexed)
           let oldestUnpaidDate: Date | null = null;
           if (contact.type === "Mill" && netBalance.gt(0)) {
-            const unpaid = allPurchases
-              .filter((p) => p.supplierId === contact.id)
-              .sort(
-                (a, b) =>
-                  new Date(a.date).getTime() - new Date(b.date).getTime()
-              );
-            if (unpaid.length > 0) oldestUnpaidDate = new Date(unpaid[0].date);
+            const contactPurchases = purchasesBySupplierId.get(contact.id) ?? [];
+            for (const p of contactPurchases) {
+              const d = new Date(p.date);
+              if (!oldestUnpaidDate || d < oldestUnpaidDate) oldestUnpaidDate = d;
+            }
           } else if (contact.type === "Buyer" && netBalance.gt(0)) {
-            const unpaid = allSales
-              .filter((s) => s.buyerId === contact.id)
-              .sort(
-                (a, b) =>
-                  new Date(a.date).getTime() - new Date(b.date).getTime()
-              );
-            if (unpaid.length > 0) oldestUnpaidDate = new Date(unpaid[0].date);
+            const contactSales = salesByBuyerId.get(contact.id) ?? [];
+            for (const s of contactSales) {
+              const d = new Date(s.date);
+              if (!oldestUnpaidDate || d < oldestUnpaidDate) oldestUnpaidDate = d;
+            }
           }
 
           const daysSinceOldest = oldestUnpaidDate

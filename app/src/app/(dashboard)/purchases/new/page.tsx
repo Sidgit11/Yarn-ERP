@@ -26,7 +26,6 @@ export default function NewPurchasePage() {
   const [ratePerKg, setRatePerKg] = useState<number | "">("");
   const [gstPct, setGstPct] = useState("5");
   const [transport, setTransport] = useState<number | "">("");
-  const [ccDrawDate, setCcDrawDate] = useState("");
   const [amountPaid, setAmountPaid] = useState<number | "">("");
   const [notes, setNotes] = useState("");
 
@@ -103,7 +102,6 @@ export default function NewPurchasePage() {
       ratePerKg: String(ratePerKg),
       gstPct,
       transport: String(typeof transport === "number" ? transport : 0),
-      ccDrawDate: ccDrawDate || undefined,
       amountPaid: String(typeof amountPaid === "number" ? amountPaid : 0),
     });
   };
@@ -454,19 +452,6 @@ export default function NewPurchasePage() {
             <span className="font-semibold text-base">GRAND TOTAL</span>
             <span className="text-xl font-bold">{formatIndianCurrency(computed.grandTotal)}</span>
           </div>
-        </div>
-
-        {/* CC Draw Date */}
-        <div>
-          <label className={labelClass}>
-            CC Draw Date <span className="text-[#ADB5BD] font-normal">(optional)</span>
-          </label>
-          <input
-            type="date"
-            value={ccDrawDate}
-            onChange={(e) => setCcDrawDate(e.target.value)}
-            className={inputClass}
-          />
         </div>
 
         {/* Amount Paid */}

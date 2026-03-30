@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, PackagePlus, IndianRupee, CreditCard,
-  Menu, Landmark, BookOpen, Users, Package, Settings, FileCheck, Upload, X
+  Menu, Landmark, BookOpen, Users, Package, Settings, FileCheck, Upload, X, LogOut
 } from "lucide-react";
 
 const mainTabs = [
@@ -71,12 +72,21 @@ export function BottomNav() {
                 );
               })}
             </div>
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all"
+              >
+                <LogOut size={18} strokeWidth={1.5} />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Bottom nav bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-white/95 backdrop-blur-md border-t border-gray-100 safe-area-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-white/95 backdrop-blur-md border-t border-gray-100 safe-area-bottom" data-tour="tour-nav">
         <div className="flex items-center justify-around h-16">
           {mainTabs.map((item) => {
             const Icon = item.icon;

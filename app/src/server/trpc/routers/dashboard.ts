@@ -172,24 +172,26 @@ export const dashboardRouter = router({
     const netMarginPct = totalSaleBase.gt(0) ? netMargin.div(totalSaleBase).mul(100) : D(0);
     const brokerCommissionPending = totalBrokerCommission.minus(totalBrokerPaid);
 
-    // ── Inventory per product ─────────────────────────────────────────────
+    // ── Inventory per product (indexed for O(N) instead of O(P*M)) ────────
+    const purchasesByProduct: Record<string, { bags: number; kg: number }> = {};
+    for (const p of allPurchases) {
+      if (!purchasesByProduct[p.productId]) purchasesByProduct[p.productId] = { bags: 0, kg: 0 };
+      purchasesByProduct[p.productId].bags += p.qtyBags;
+      purchasesByProduct[p.productId].kg += p.qtyBags * p.kgPerBag;
+    }
+    const salesByProduct: Record<string, { bags: number; kg: number }> = {};
+    for (const s of allSales) {
+      if (!salesByProduct[s.productId]) salesByProduct[s.productId] = { bags: 0, kg: 0 };
+      salesByProduct[s.productId].bags += s.qtyBags;
+      salesByProduct[s.productId].kg += s.qtyBags * s.kgPerBag;
+    }
     const inventory = allProducts.map((prod) => {
-      const purchasedBags = allPurchases
-        .filter((p) => p.productId === prod.id)
-        .reduce((s, p) => s + p.qtyBags, 0);
-      const purchasedKg = allPurchases
-        .filter((p) => p.productId === prod.id)
-        .reduce((s, p) => s + p.qtyBags * p.kgPerBag, 0);
-      const soldBags = allSales
-        .filter((s) => s.productId === prod.id)
-        .reduce((acc, s) => acc + s.qtyBags, 0);
-      const soldKg = allSales
-        .filter((s) => s.productId === prod.id)
-        .reduce((acc, s) => acc + s.qtyBags * s.kgPerBag, 0);
+      const bought = purchasesByProduct[prod.id] ?? { bags: 0, kg: 0 };
+      const sold = salesByProduct[prod.id] ?? { bags: 0, kg: 0 };
       return {
         productName: productFullName(prod),
-        bagsInHand: purchasedBags - soldBags,
-        kgInHand: purchasedKg - soldKg,
+        bagsInHand: bought.bags - sold.bags,
+        kgInHand: bought.kg - sold.kg,
       };
     }).filter((i) => i.bagsInHand > 0);
 

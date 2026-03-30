@@ -2,9 +2,12 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency } from "@/lib/utils";
 import { MetricExplainer } from "@/components/shared/metric-explainer";
+import { GuidedTour } from "@/components/shared/guided-tour";
 import {
   TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronUp,
   Landmark, Wallet, Receipt, BarChart3, Package, Activity,
@@ -57,7 +60,7 @@ function MetricRow({
       <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
         <span
           className={`whitespace-nowrap tabular-nums ${
-            isHero ? "text-[28px] font-bold leading-9 tracking-tight" : "text-[13px] font-medium"
+            isHero ? "text-[32px] font-bold leading-10 tracking-tight" : "text-[13px] font-medium"
           } ${
             isNegative ? "text-red-600" : isBold || isHero ? "text-gray-900" : "text-gray-700"
           }`}
@@ -119,11 +122,13 @@ function DashboardCard({
   cardKey,
   children,
   className = "",
+  tourId,
 }: {
   title: string;
   cardKey: string;
   children: React.ReactNode;
   className?: string;
+  tourId?: string;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const config = CARD_CONFIG[cardKey];
@@ -133,6 +138,7 @@ function DashboardCard({
     <div
       className={`bg-white rounded-2xl border border-gray-100 overflow-hidden card-hover ${className}`}
       style={{ boxShadow: "var(--shadow-sm)" }}
+      {...(tourId ? { "data-tour": tourId } : {})}
     >
       {/* Accent stripe */}
       <div className={`h-1 ${config.theme.accent}`} />
@@ -163,6 +169,12 @@ function DashboardCard({
 
 export default function DashboardPage() {
   const { data, isLoading } = trpc.dashboard.getMetrics.useQuery();
+  const searchParams = useSearchParams();
+  const { data: session } = useSession();
+
+  const tourFromUrl = searchParams.get("tour") === "1";
+  const isDemoUser = session?.user?.email === "demo@syt.app";
+  const forceTour = tourFromUrl || isDemoUser;
 
   if (isLoading) {
     return (
@@ -226,8 +238,11 @@ export default function DashboardPage() {
       <h1 className="text-xl font-bold text-gray-900 mb-5">Dashboard</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 
+        {/* Guided Tour */}
+        <GuidedTour forceShow={forceTour} />
+
         {/* Card 1: CC Account Position */}
-        <DashboardCard title="CC Account" cardKey="cc" className={ccCardClass}>
+        <DashboardCard title="CC Account" cardKey="cc" className={ccCardClass} tourId="tour-cc-card">
           <MetricRow
             label="CC used"
             value={formatIndianCurrency(cc.outstanding)}
@@ -280,7 +295,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 2: Where Is My Money? */}
-        <DashboardCard title="Where Is My Money?" cardKey="money">
+        <DashboardCard title="Where Is My Money?" cardKey="money" tourId="tour-money-card">
           <MetricRow label="Stock in Hand" value={formatIndianCurrency(money.cashInInventory)} isHero
             explainer={{ title: "Stock in Hand", description: "Value of unsold yarn at purchase cost.", formula: "Total Purchase Base - COGS" }} />
           <MetricRow label="They Owe You" value={formatIndianCurrency(money.totalReceivables)}
@@ -314,7 +329,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 4: Your Profit */}
-        <DashboardCard title="Your Profit" cardKey="margins">
+        <DashboardCard title="Your Profit" cardKey="margins" tourId="tour-margins-card">
           <MetricRow label="Revenue (excl GST)" value={formatIndianCurrency(margins.revenue)}
             explainer={{ title: "Revenue", description: "Total sales before GST.", formula: "Sum of (qty x rate)" }} />
           <MetricRow label="Cost of Goods" value={formatIndianCurrency(margins.cogs)}
@@ -325,7 +340,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between py-1.5 font-semibold">
             <span className="text-[13px] text-gray-800">GROSS MARGIN</span>
             <div className="flex items-center gap-1.5">
-              <span className={`text-[28px] font-bold leading-9 tracking-tight tabular-nums ${margins.grossMargin >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              <span className={`text-[32px] font-bold leading-10 tracking-tight tabular-nums ${margins.grossMargin >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                 {formatIndianCurrency(margins.grossMargin)}
               </span>
               <span className="text-xs text-gray-400 font-normal">({margins.grossMarginPct}%)</span>
@@ -337,7 +352,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between py-1.5 font-bold">
             <span className="text-[13px] text-gray-900">NET MARGIN</span>
             <div className="flex items-center gap-1.5">
-              <span className={`text-[28px] font-bold leading-9 tracking-tight tabular-nums ${margins.netMargin >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              <span className={`text-[32px] font-bold leading-10 tracking-tight tabular-nums ${margins.netMargin >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                 {formatIndianCurrency(margins.netMargin)}
               </span>
               <span className="text-xs text-gray-400 font-semibold">({margins.netMarginPct}%)</span>
@@ -347,7 +362,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 5: Stock in Hand */}
-        <DashboardCard title="Stock in Hand" cardKey="inventory">
+        <DashboardCard title="Stock in Hand" cardKey="inventory" tourId="tour-inventory-card">
           {inventory.length === 0 ? (
             <p className="text-sm text-gray-400 py-2">No inventory in hand.</p>
           ) : (
@@ -388,23 +403,23 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 6: Quick Stats */}
-        <DashboardCard title="Quick Stats" cardKey="stats">
+        <DashboardCard title="Quick Stats" cardKey="stats" tourId="tour-stats-card">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-gray-400 font-medium mb-1">Total Purchases</p>
-              <p className="text-[28px] font-bold text-gray-800 leading-9 tracking-tight tabular-nums">{stats.totalPurchases}</p>
+              <p className="text-[32px] font-bold text-gray-800 leading-10 tracking-tight tabular-nums">{stats.totalPurchases}</p>
             </div>
             <div>
               <p className="text-xs text-gray-400 font-medium mb-1">Pending Pay</p>
-              <p className="text-[28px] font-bold text-orange-600 leading-9 tracking-tight tabular-nums">{stats.pendingPayments}</p>
+              <p className="text-[32px] font-bold text-orange-600 leading-10 tracking-tight tabular-nums">{stats.pendingPayments}</p>
             </div>
             <div>
               <p className="text-xs text-gray-400 font-medium mb-1">Total Sales</p>
-              <p className="text-[28px] font-bold text-gray-800 leading-9 tracking-tight tabular-nums">{stats.totalSales}</p>
+              <p className="text-[32px] font-bold text-gray-800 leading-10 tracking-tight tabular-nums">{stats.totalSales}</p>
             </div>
             <div>
               <p className="text-xs text-gray-400 font-medium mb-1">Pending Coll</p>
-              <p className="text-[28px] font-bold text-orange-600 leading-9 tracking-tight tabular-nums">{stats.pendingCollections}</p>
+              <p className="text-[32px] font-bold text-orange-600 leading-10 tracking-tight tabular-nums">{stats.pendingCollections}</p>
             </div>
           </div>
         </DashboardCard>

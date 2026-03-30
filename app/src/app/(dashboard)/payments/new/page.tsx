@@ -39,6 +39,7 @@ export default function NewPaymentPage() {
   const [form, setForm] = useState<PaymentFormData>(emptyForm);
   const [viaCC, setViaCC] = useState(true);
   const [displayAmount, setDisplayAmount] = useState("");
+  const [showReview, setShowReview] = useState(false);
   const utils = trpc.useUtils();
 
   const { data: contactsList } = trpc.contacts.list.useQuery();
@@ -111,6 +112,100 @@ export default function NewPaymentPage() {
 
   const inputClass = "w-full px-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:ring-2 focus:ring-[#2980B9] focus:border-transparent outline-none bg-white";
   const labelClass = "block text-sm font-medium text-[#2C3E50] mb-1.5";
+
+  // Confirmation card (review step)
+  if (showReview) {
+    const parsedAmt = parseIndianAmount(form.amount);
+    const formattedAmt = parsedAmt ? formatIndianCurrency(parsedAmt) : form.amount;
+    const partyName = selectedParty?.name ?? "-";
+    const directionWord = form.direction === "Paid" ? "to" : "from";
+
+    return (
+      <div className="max-w-lg mx-auto">
+        <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-6 space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-6 h-6 bg-[#D5F5E3] rounded-full flex items-center justify-center">
+              <svg className="w-4 h-4 text-[#1E8449]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h1 className="text-lg font-bold text-[#2C3E50]">Review Your Payment</h1>
+          </div>
+
+          <div className="border-t border-[#DEE2E6]" />
+
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-[#6C757D]">Date</span>
+              <span className="font-medium text-[#2C3E50]">{form.date}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#6C757D]">Party</span>
+              <span className="font-medium text-[#2C3E50]">{partyName} ({selectedParty?.type})</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#6C757D]">Direction</span>
+              <span className={cn(
+                "font-semibold",
+                form.direction === "Paid" ? "text-[#922B21]" : "text-[#1E8449]"
+              )}>
+                {form.direction} {directionWord} {partyName}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#6C757D]">Mode</span>
+              <span className="font-medium text-[#2C3E50]">{form.mode}</span>
+            </div>
+            {form.againstTxnId && (
+              <div className="flex justify-between">
+                <span className="text-[#6C757D]">Against</span>
+                <span className="font-medium text-[#2C3E50]">{form.againstTxnId}</span>
+              </div>
+            )}
+            {form.reference && (
+              <div className="flex justify-between">
+                <span className="text-[#6C757D]">Reference</span>
+                <span className="font-medium text-[#2C3E50]">{form.reference}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-[#DEE2E6]" />
+
+          <div className="flex justify-between items-center">
+            <span className="text-base font-bold text-[#2C3E50] uppercase tracking-wide">AMOUNT</span>
+            <span className="text-xl font-bold text-[#1B4F72]">{formattedAmt}</span>
+          </div>
+
+          {viaCC && (
+            <div className="bg-[#EBF5FB] border border-[#AED6F1] rounded-xl px-4 py-3">
+              <p className="text-sm text-[#1B4F72] font-medium">
+                Will auto-record CC {form.direction === "Paid" ? "Draw" : "Repay"} of {formattedAmt}
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowReview(false)}
+              className="flex-1 min-h-[48px] px-4 py-3 border border-[#DEE2E6] text-[#6C757D] rounded-xl font-semibold text-base hover:bg-[#F8F9FA] transition-colors"
+            >
+              &larr; Edit
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={createMutation.isPending}
+              className="flex-1 min-h-[48px] px-4 py-3 bg-[#27AE60] text-white rounded-xl font-semibold text-base hover:bg-[#229954] transition-colors disabled:opacity-50"
+            >
+              {createMutation.isPending ? "Saving..." : "Confirm \u2713"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -318,11 +413,11 @@ export default function NewPaymentPage() {
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            disabled={!canSave || createMutation.isPending}
-            className="flex-1 min-h-[48px] px-4 py-3 text-base font-semibold text-white bg-[#1B4F72] rounded-xl hover:bg-[#154360] transition-colors disabled:opacity-50"
+            onClick={() => setShowReview(true)}
+            disabled={!canSave}
+            className="flex-1 min-h-[48px] px-4 py-3 text-base font-semibold text-white bg-[#1B4F72] rounded-xl hover:bg-[#154360] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {createMutation.isPending ? "Saving..." : "Save Payment"}
+            Review & Save
           </button>
         </div>
       </div>

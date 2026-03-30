@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { Play } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,6 +32,24 @@ export default function LoginPage() {
     }
   };
 
+  const handleDemoLogin = async () => {
+    setDemoLoading(true);
+    setError("");
+
+    const result = await signIn("credentials", {
+      login: "demo@syt.app",
+      password: "demo123",
+      redirect: false,
+    });
+
+    if (result?.error) {
+      setError("Demo account not available. Please contact support.");
+      setDemoLoading(false);
+    } else {
+      router.push("/?tour=1");
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] px-4">
       <div className="w-full max-w-sm">
@@ -37,7 +57,7 @@ export default function LoginPage() {
           <div className="w-14 h-14 rounded-2xl bg-gray-900 text-white flex items-center justify-center mx-auto mb-4 text-xl font-bold">
             S
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">SYT ERP</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">SYT</h1>
           <p className="text-gray-400 text-sm mt-1">Sarthak Yarn Trading</p>
         </div>
 
@@ -80,12 +100,33 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || demoLoading}
             className="w-full min-h-[48px] bg-gray-900 text-white py-3 rounded-xl text-[15px] font-semibold hover:bg-gray-800 disabled:opacity-50 transition-all active:scale-[0.98]"
           >
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
+
+        {/* Demo Login */}
+        <div className="mt-4">
+          <div className="relative flex items-center justify-center mb-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200" />
+            </div>
+            <span className="relative bg-[var(--color-bg)] px-3 text-xs text-gray-400">or</span>
+          </div>
+          <button
+            onClick={handleDemoLogin}
+            disabled={loading || demoLoading}
+            className="w-full min-h-[48px] bg-blue-50 text-blue-700 border border-blue-200 py-3 rounded-xl text-[15px] font-semibold hover:bg-blue-100 disabled:opacity-50 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+          >
+            <Play size={16} fill="currentColor" />
+            {demoLoading ? "Loading demo..." : "Try Demo"}
+          </button>
+          <p className="text-center text-[11px] text-gray-400 mt-2">
+            Pre-loaded with sample yarn trading data
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:seed": "npx tsx src/server/db/seed.ts",
+    "db:seed-demo": "npx tsx src/server/db/seed-demo.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
