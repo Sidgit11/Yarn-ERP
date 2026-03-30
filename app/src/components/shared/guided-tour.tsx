@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import {
   ChevronRight, ChevronLeft, Sparkles, X,
   LayoutDashboard, ShoppingCart, TrendingUp, CreditCard, BookOpen, Users,
+  Upload, FileCheck, Download,
 } from "lucide-react";
 
 // ── Tour Steps ─────────────────────────────────────────────────────────────
@@ -73,6 +74,33 @@ const TOUR_STEPS: TourStep[] = [
     title: "Contacts & Products",
     description:
       "Set up mills, buyers, brokers (with commission), and transporters. Products are in the 'Products' page. Set these up first — they power all dropdowns.",
+  },
+  {
+    page: "/import",
+    icon: Upload,
+    iconColor: "text-indigo-500",
+    iconBg: "bg-indigo-50",
+    title: "Import Data",
+    description:
+      "Bulk import contacts, products, purchases, or sales from Excel. Download a template, fill it in, and upload — the system validates every row before importing.",
+  },
+  {
+    page: "/settings",
+    icon: Download,
+    iconColor: "text-amber-500",
+    iconBg: "bg-amber-50",
+    title: "Export Data",
+    description:
+      "Download all your data as an Excel file from Settings. Separate sheets for contacts, products, purchases, sales, payments, and CC ledger. Great for backups or sharing with your CA.",
+  },
+  {
+    page: "/recon",
+    icon: FileCheck,
+    iconColor: "text-cyan-500",
+    iconBg: "bg-cyan-50",
+    title: "Tally Reconciliation",
+    description:
+      "Match your data with Tally. Upload your Tally export, and the system auto-matches party names and compares balances. Instantly spot mismatches and variances.",
   },
   {
     page: "/",
