@@ -1,4 +1,4 @@
-// Yarn ERP Dashboard
+// Yarn ERP Dashboard v2
 "use client";
 
 import { useState } from "react";
