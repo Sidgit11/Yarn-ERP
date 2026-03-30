@@ -64,7 +64,7 @@ function DataExportSection() {
       }
 
       const today = new Date().toISOString().split("T")[0];
-      XLSX.writeFile(wb, `SYT_ERP_Export_${today}.xlsx`);
+      XLSX.writeFile(wb, `TradeTexPro_Export_${today}.xlsx`);
       toast.success("Data exported successfully");
     } catch {
       toast.error("Failed to export data");

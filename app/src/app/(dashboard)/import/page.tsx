@@ -134,7 +134,7 @@ export default function ImportPage() {
     }));
 
     XLSX.utils.book_append_sheet(wb, ws, importType);
-    XLSX.writeFile(wb, `SYT_Template_${importType}.xlsx`);
+    XLSX.writeFile(wb, `TradeTexPro_Template_${importType}.xlsx`);
     toast.success("Template downloaded — Row 1 has instructions, rows below are examples. Delete instruction row before uploading.");
   }, [importType]);
 

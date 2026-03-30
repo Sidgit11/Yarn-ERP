@@ -16,8 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SYT ERP - Sarthak Yarn Trading",
-  description: "ERP system for Sarthak Yarn Trading",
+  title: "TradeTexPro — Yarn Trading Management",
+  description: "TradeTexPro — Smart yarn trading management for modern traders",
 };
 
 export default function RootLayout({

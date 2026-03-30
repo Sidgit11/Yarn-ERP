@@ -55,10 +55,10 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-2xl bg-gray-900 text-white flex items-center justify-center mx-auto mb-4 text-xl font-bold">
-            S
+            T
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">SYT</h1>
-          <p className="text-gray-400 text-sm mt-1">Sarthak Yarn Trading</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">TradeTexPro</h1>
+          <p className="text-gray-400 text-sm mt-1">Smart Yarn Trading Management</p>
         </div>
 
         <form

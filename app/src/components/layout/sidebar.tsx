@@ -30,8 +30,8 @@ export function Sidebar() {
     <aside className="hidden md:flex w-[220px] flex-col border-r border-gray-100 bg-white h-screen fixed left-0 top-0">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-100">
-        <h1 className="text-lg font-bold text-gray-900 tracking-tight">SYT</h1>
-        <p className="text-[11px] text-gray-400 font-medium">Sarthak Yarn Trading</p>
+        <h1 className="text-lg font-bold text-gray-900 tracking-tight">TradeTexPro</h1>
+        <p className="text-[11px] text-gray-400 font-medium">Yarn Trading Management</p>
       </div>
 
       {/* Nav */}

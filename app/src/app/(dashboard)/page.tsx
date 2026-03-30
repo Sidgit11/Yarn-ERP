@@ -196,7 +196,7 @@ export default function DashboardPage() {
           <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
             <Activity size={28} className="text-blue-500" />
           </div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Welcome to SYT!</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Welcome to TradeTexPro!</h2>
           <p className="text-gray-500 mb-4 max-w-md mx-auto">
             Your dashboard will come alive once you start recording transactions.
           </p>

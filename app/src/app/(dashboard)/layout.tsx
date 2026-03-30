@@ -9,7 +9,7 @@ function MobileHeader() {
   return (
     <div className="md:hidden sticky top-0 z-20 px-4 py-3 flex items-center justify-between bg-white border-b border-gray-100">
       <div>
-        <h1 className="text-base font-bold text-gray-900 tracking-tight">SYT</h1>
+        <h1 className="text-base font-bold text-gray-900 tracking-tight">TradeTexPro</h1>
       </div>
       <div className="flex items-center gap-1.5">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
