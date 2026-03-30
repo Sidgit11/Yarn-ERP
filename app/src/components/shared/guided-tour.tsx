@@ -45,7 +45,7 @@ const TOUR_STEPS: TourStep[] = [
     iconBg: "bg-emerald-50",
     title: "Sales",
     description:
-      "Record sales to buyers. The system calculates your margin on each sale using weighted average cost from purchases. Instantly see if you're making money.",
+      "Record sales to buyers. The system calculates your margin using weighted average cost. Instantly see if you're making money on each deal.",
   },
   {
     page: "/payments",
@@ -72,7 +72,7 @@ const TOUR_STEPS: TourStep[] = [
     iconBg: "bg-teal-50",
     title: "Contacts & Products",
     description:
-      "Set up your mills, buyers, brokers (with commission), and transporters here. Products live in the 'Products' page. Set these up first — they power all dropdowns.",
+      "Set up mills, buyers, brokers (with commission), and transporters. Products are in the 'Products' page. Set these up first — they power all dropdowns.",
   },
   {
     page: "/",
@@ -154,100 +154,106 @@ export function GuidedTour() {
   const Icon = cur.icon;
 
   return (
-    <>
-      {/*
-        Bottom card — sits above the mobile nav (bottom-20 = 80px),
-        or at the bottom on desktop. No overlay, page is fully visible.
-      */}
-      <div className="fixed bottom-20 md:bottom-4 left-3 right-3 md:left-auto md:right-4 md:w-[400px] z-[100] animate-slide-up">
-        <div
-          className="bg-white rounded-2xl border border-gray-200 overflow-hidden"
-          style={{
-            boxShadow: "0 -4px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
-          {/* Progress bar */}
-          <div className="h-1 bg-gray-100 flex">
-            {TOUR_STEPS.map((_, i) => (
-              <div
-                key={i}
-                className={`flex-1 transition-all duration-500 ${
-                  i <= step ? "bg-blue-500" : ""
-                }`}
-              />
-            ))}
+    <div
+      className="fixed left-2 right-2 md:left-auto md:right-4 md:w-[400px] z-[100] animate-slide-up"
+      style={{
+        /* Mobile: sit above bottom nav (h-16=64px) + safe area + 8px gap */
+        bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
+      }}
+    >
+      {/* Desktop override: fixed 16px from bottom */}
+      <style>{`
+        @media (min-width: 768px) {
+          .tour-card-wrapper { bottom: 16px !important; }
+        }
+      `}</style>
+
+      <div
+        className="tour-card-wrapper bg-white rounded-2xl border border-gray-200 overflow-hidden"
+        style={{
+          boxShadow: "0 -4px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
+        }}
+      >
+        {/* Progress bar */}
+        <div className="h-1 bg-gray-100 flex">
+          {TOUR_STEPS.map((_, i) => (
+            <div
+              key={i}
+              className={`flex-1 transition-all duration-500 ${
+                i <= step ? "bg-blue-500" : ""
+              }`}
+            />
+          ))}
+        </div>
+
+        <div className="p-4">
+          {/* Header: icon + title + close */}
+          <div className="flex items-center gap-3 mb-2.5">
+            <div
+              className={`w-9 h-9 rounded-xl ${cur.iconBg} flex items-center justify-center flex-shrink-0`}
+            >
+              <Icon size={18} className={cur.iconColor} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-[15px] font-bold text-gray-900 leading-tight">
+                {cur.title}
+              </h3>
+              <p className="text-[11px] text-gray-400 font-medium">
+                {step + 1} of {TOUR_STEPS.length}
+              </p>
+            </div>
+            <button
+              onClick={() => finish()}
+              className="p-2 -mr-1 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
+              aria-label="Close tour"
+            >
+              <X size={16} className="text-gray-400" />
+            </button>
           </div>
 
-          <div className="px-4 pt-3.5 pb-4">
-            {/* Top row: icon + title + step + close */}
-            <div className="flex items-start gap-3 mb-2">
-              <div
-                className={`w-9 h-9 rounded-xl ${cur.iconBg} flex items-center justify-center flex-shrink-0 mt-0.5`}
+          {/* Description — full width on mobile, no left indent */}
+          <p className="text-[13px] text-gray-600 leading-relaxed mb-4">
+            {cur.description}
+          </p>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between">
+            {!isLast ? (
+              <button
+                onClick={() => finish()}
+                className="text-[13px] text-gray-400 hover:text-gray-600 transition-colors py-1"
               >
-                <Icon size={18} className={cur.iconColor} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[15px] font-bold text-gray-900 leading-tight">
-                    {cur.title}
-                  </h3>
-                  <button
-                    onClick={() => finish()}
-                    className="p-1 -mr-1 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
-                  >
-                    <X size={14} className="text-gray-400" />
-                  </button>
-                </div>
-                <p className="text-[11px] text-gray-400 font-medium">
-                  {step + 1} of {TOUR_STEPS.length}
-                </p>
-              </div>
-            </div>
-
-            {/* Description */}
-            <p className="text-[13px] text-gray-600 leading-relaxed mb-3 ml-12">
-              {cur.description}
-            </p>
-
-            {/* Actions */}
-            <div className="flex items-center justify-between ml-12">
-              {!isLast ? (
+                Skip tour
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              {!isFirst && (
                 <button
-                  onClick={() => finish()}
-                  className="text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
+                  onClick={() => navigateToStep(step - 1)}
+                  className="flex items-center gap-0.5 px-3 py-2 text-[13px] font-medium text-gray-600 hover:bg-gray-50 rounded-xl transition-colors min-h-[40px]"
                 >
-                  Skip tour
+                  <ChevronLeft size={14} /> Back
                 </button>
-              ) : (
-                <span />
               )}
-              <div className="flex items-center gap-1.5">
-                {!isFirst && (
-                  <button
-                    onClick={() => navigateToStep(step - 1)}
-                    className="flex items-center gap-0.5 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <ChevronLeft size={12} /> Back
-                  </button>
-                )}
-                <button
-                  onClick={() =>
-                    isLast ? finish() : navigateToStep(step + 1)
-                  }
-                  className="flex items-center gap-0.5 px-4 py-1.5 text-[12px] font-semibold text-white bg-gray-900 hover:bg-gray-800 rounded-lg transition-colors"
-                >
-                  {isLast
-                    ? "Get Started"
-                    : isFirst
-                    ? "Start Tour"
-                    : "Next"}
-                  {!isLast && <ChevronRight size={12} />}
-                </button>
-              </div>
+              <button
+                onClick={() =>
+                  isLast ? finish() : navigateToStep(step + 1)
+                }
+                className="flex items-center gap-0.5 px-5 py-2 text-[13px] font-semibold text-white bg-gray-900 hover:bg-gray-800 rounded-xl transition-colors min-h-[40px]"
+              >
+                {isLast
+                  ? "Get Started"
+                  : isFirst
+                  ? "Start Tour"
+                  : "Next"}
+                {!isLast && <ChevronRight size={14} />}
+              </button>
             </div>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
