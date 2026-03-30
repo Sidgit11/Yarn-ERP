@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { GuidedTour } from "@/components/shared/guided-tour";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth";
 import { redirect } from "next/navigation";
@@ -39,6 +40,7 @@ export default async function DashboardLayout({
         </div>
       </main>
       <BottomNav />
+      <GuidedTour />
     </div>
   );
 }

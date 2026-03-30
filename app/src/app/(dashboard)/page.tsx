@@ -2,12 +2,9 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency } from "@/lib/utils";
 import { MetricExplainer } from "@/components/shared/metric-explainer";
-import { GuidedTour } from "@/components/shared/guided-tour";
 import {
   TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronUp,
   Landmark, Wallet, Receipt, BarChart3, Package, Activity,
@@ -122,13 +119,11 @@ function DashboardCard({
   cardKey,
   children,
   className = "",
-  tourId,
 }: {
   title: string;
   cardKey: string;
   children: React.ReactNode;
   className?: string;
-  tourId?: string;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const config = CARD_CONFIG[cardKey];
@@ -138,7 +133,6 @@ function DashboardCard({
     <div
       className={`bg-white rounded-2xl border border-gray-100 overflow-hidden card-hover ${className}`}
       style={{ boxShadow: "var(--shadow-sm)" }}
-      {...(tourId ? { "data-tour": tourId } : {})}
     >
       {/* Accent stripe */}
       <div className={`h-1 ${config.theme.accent}`} />
@@ -169,12 +163,6 @@ function DashboardCard({
 
 export default function DashboardPage() {
   const { data, isLoading } = trpc.dashboard.getMetrics.useQuery();
-  const searchParams = useSearchParams();
-  const { data: session } = useSession();
-
-  const tourFromUrl = searchParams.get("tour") === "1";
-  const isDemoUser = session?.user?.email === "demo@syt.app";
-  const forceTour = tourFromUrl || isDemoUser;
 
   if (isLoading) {
     return (
@@ -238,11 +226,8 @@ export default function DashboardPage() {
       <h1 className="text-xl font-bold text-gray-900 mb-5">Dashboard</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 
-        {/* Guided Tour */}
-        <GuidedTour forceShow={forceTour} />
-
         {/* Card 1: CC Account Position */}
-        <DashboardCard title="CC Account" cardKey="cc" className={ccCardClass} tourId="tour-cc-card">
+        <DashboardCard title="CC Account" cardKey="cc" className={ccCardClass}>
           <MetricRow
             label="CC used"
             value={formatIndianCurrency(cc.outstanding)}
@@ -295,7 +280,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 2: Where Is My Money? */}
-        <DashboardCard title="Where Is My Money?" cardKey="money" tourId="tour-money-card">
+        <DashboardCard title="Where Is My Money?" cardKey="money">
           <MetricRow label="Stock in Hand" value={formatIndianCurrency(money.cashInInventory)} isHero
             explainer={{ title: "Stock in Hand", description: "Value of unsold yarn at purchase cost.", formula: "Total Purchase Base - COGS" }} />
           <MetricRow label="They Owe You" value={formatIndianCurrency(money.totalReceivables)}
@@ -329,7 +314,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 4: Your Profit */}
-        <DashboardCard title="Your Profit" cardKey="margins" tourId="tour-margins-card">
+        <DashboardCard title="Your Profit" cardKey="margins">
           <MetricRow label="Revenue (excl GST)" value={formatIndianCurrency(margins.revenue)}
             explainer={{ title: "Revenue", description: "Total sales before GST.", formula: "Sum of (qty x rate)" }} />
           <MetricRow label="Cost of Goods" value={formatIndianCurrency(margins.cogs)}
@@ -362,7 +347,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 5: Stock in Hand */}
-        <DashboardCard title="Stock in Hand" cardKey="inventory" tourId="tour-inventory-card">
+        <DashboardCard title="Stock in Hand" cardKey="inventory">
           {inventory.length === 0 ? (
             <p className="text-sm text-gray-400 py-2">No inventory in hand.</p>
           ) : (
@@ -403,7 +388,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 6: Quick Stats */}
-        <DashboardCard title="Quick Stats" cardKey="stats" tourId="tour-stats-card">
+        <DashboardCard title="Quick Stats" cardKey="stats">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-gray-400 font-medium mb-1">Total Purchases</p>

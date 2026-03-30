@@ -86,7 +86,7 @@ export function BottomNav() {
       )}
 
       {/* Bottom nav bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-white/95 backdrop-blur-md border-t border-gray-100 safe-area-bottom" data-tour="tour-nav">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-white/95 backdrop-blur-md border-t border-gray-100 safe-area-bottom">
         <div className="flex items-center justify-around h-16">
           {mainTabs.map((item) => {
             const Icon = item.icon;
