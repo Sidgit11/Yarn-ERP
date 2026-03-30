@@ -4,33 +4,44 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../auth";
 import { db } from "../db";
 
-// DON'T import superjson - it may not be installed. Use default transformer.
-
 export const createTRPCContext = async (opts?: FetchCreateContextFnOptions) => {
   const session = await getServerSession(authOptions);
+  const tenantId = session?.user?.id ?? null;
+
   return {
     db,
     session,
-    // For Phase 1, single tenant - use session user id as tenant_id
-    tenantId: (session?.user as any)?.id ?? "default-tenant",
+    tenantId,
   };
 };
 
-const t = initTRPC.context<typeof createTRPCContext>().create({
-  // no transformer needed for now
-});
+const t = initTRPC.context<typeof createTRPCContext>().create({});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
 
 const enforceAuth = t.middleware(({ ctx, next }) => {
-  // For development, allow unauthenticated access
+  if (!ctx.session?.user || !ctx.tenantId) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "You must be logged in",
+    });
+  }
   return next({
     ctx: {
       ...ctx,
-      tenantId: ctx.tenantId,
+      tenantId: ctx.tenantId as string,
     },
   });
 });
 
-export const protectedProcedure = t.procedure.use(enforceAuth);
+// Timing middleware — logs how long each procedure takes
+const timingLogger = t.middleware(async ({ path, next }) => {
+  const start = performance.now();
+  const result = await next();
+  const ms = (performance.now() - start).toFixed(1);
+  console.log(`[tRPC] ${path} — ${ms}ms`);
+  return result;
+});
+
+export const protectedProcedure = t.procedure.use(timingLogger).use(enforceAuth);

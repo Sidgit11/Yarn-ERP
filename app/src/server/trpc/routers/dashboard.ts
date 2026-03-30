@@ -1,233 +1,248 @@
 import { router, protectedProcedure } from "../trpc";
-import { purchases, sales, payments, ccEntries, config, ccInterestMonthly, contacts, products } from "../../db/schema";
-import { eq, and, isNull, asc } from "drizzle-orm";
+import {
+  purchases, sales, payments, ccEntries, config, ccInterestMonthly, contacts, products,
+} from "../../db/schema";
+import { eq, and, isNull, asc, inArray } from "drizzle-orm";
+import {
+  computePurchaseTotals,
+  computeSaleTotals,
+  computeBrokerCommission,
+  computeCcInterest,
+  productFullName,
+  D,
+  toMoney,
+} from "../../services/calculations";
 
 export const dashboardRouter = router({
   getMetrics: protectedProcedure.query(async ({ ctx }) => {
     const tid = ctx.tenantId;
+    const t0 = performance.now();
 
-    // 1. Config
-    const cfg = await ctx.db.select().from(config).where(eq(config.tenantId, tid)).then(r => r[0]);
+    // Parallel-load all data in 7 queries (not N+1)
+    const [cfg, ccEntriesAll, monthlyInterest, allPurchases, allSales, allPayments, allProducts] =
+      await Promise.all([
+        ctx.db.select().from(config).where(eq(config.tenantId, tid)).then((r: any[]) => r[0]),
+        ctx.db.select().from(ccEntries).where(eq(ccEntries.tenantId, tid))
+          .orderBy(asc(ccEntries.date), asc(ccEntries.createdAt)),
+        ctx.db.select().from(ccInterestMonthly).where(eq(ccInterestMonthly.tenantId, tid)),
+        ctx.db.select().from(purchases)
+          .where(and(eq(purchases.tenantId, tid), isNull(purchases.deletedAt))),
+        ctx.db.select().from(sales)
+          .where(and(eq(sales.tenantId, tid), isNull(sales.deletedAt))),
+        ctx.db.select().from(payments)
+          .where(and(eq(payments.tenantId, tid), isNull(payments.deletedAt))),
+        ctx.db.select().from(products)
+          .where(and(eq(products.tenantId, tid), isNull(products.deletedAt))),
+      ]);
+    const t1 = performance.now();
+    console.log(`[dashboard] DB parallel load — ${(t1 - t0).toFixed(1)}ms (rows: ${allPurchases.length}P, ${allSales.length}S, ${allPayments.length}Pay, ${ccEntriesAll.length}CC, ${allProducts.length}Prod)`);
+
+    // ── CC Position ───────────────────────────────────────────────────────
     const ccLimit = cfg ? parseFloat(cfg.ccLimit) : 5000000;
     const ccRate = cfg ? parseFloat(cfg.ccInterestRate) : 11;
+    const ccBalance = ccEntriesAll.length > 0
+      ? parseFloat(ccEntriesAll[ccEntriesAll.length - 1].runningBalance) : 0;
+    const { total: calcInterest } = computeCcInterest(ccEntriesAll, ccRate);
+    const actualInterest = monthlyInterest.reduce(
+      (s: number, r: any) => s + parseFloat(r.actualInterest), 0
+    );
 
-    // 2. CC Position
-    const ccEntriesAll = await ctx.db.select().from(ccEntries)
-      .where(eq(ccEntries.tenantId, tid))
-      .orderBy(asc(ccEntries.date), asc(ccEntries.createdAt));
-
-    const ccBalance = ccEntriesAll.length > 0 ? parseFloat(ccEntriesAll[ccEntriesAll.length - 1].runningBalance) : 0;
-    const ccAvailable = ccLimit - ccBalance;
-    const ccUtilization = ccLimit > 0 ? (ccBalance / ccLimit) * 100 : 0;
-
-    // CC calculated interest (daily accrual)
-    const now = new Date();
-    let calcInterest = 0;
-    for (let i = 0; i < ccEntriesAll.length; i++) {
-      const nextDate = i < ccEntriesAll.length - 1 ? new Date(ccEntriesAll[i + 1].date) : now;
-      const thisDate = new Date(ccEntriesAll[i].date);
-      const days = Math.max(0, Math.floor((nextDate.getTime() - thisDate.getTime()) / (1000 * 60 * 60 * 24)));
-      const bal = parseFloat(ccEntriesAll[i].runningBalance);
-      calcInterest += bal * days * ccRate / 365 / 100;
-    }
-
-    // CC actual interest
-    const monthlyInterest = await ctx.db.select().from(ccInterestMonthly)
-      .where(eq(ccInterestMonthly.tenantId, tid));
-    const actualInterest = monthlyInterest.reduce((s, r) => s + parseFloat(r.actualInterest), 0);
-
-    // 3. Purchases aggregation
-    const allPurchases = await ctx.db.select().from(purchases)
-      .where(and(eq(purchases.tenantId, tid), isNull(purchases.deletedAt)));
-
-    let totalPurchaseBase = 0;
-    let totalPurchaseGst = 0;
-    let totalPurchaseGrand = 0;
-    let totalPurchasePaid = 0;
-    let totalPurchaseTransport = 0;
-    const purchaseCount = allPurchases.length;
-    let pendingPurchasePayments = 0;
-
-    // Per-product totals for COGS calculation
+    // ── Purchase aggregation (using shared calculation) ───────────────────
+    let totalPurchaseBase = D(0);
+    let totalPurchaseGst = D(0);
+    let totalPurchaseGrand = D(0);
+    let totalPurchasePaid = D(0);
+    let totalPurchaseTransport = D(0);
     const productPurchases: Record<string, { totalBase: number; totalKg: number }> = {};
 
     for (const p of allPurchases) {
-      const totalKg = p.qtyBags * p.kgPerBag;
-      const base = totalKg * parseFloat(p.ratePerKg);
-      const gst = base * parseFloat(p.gstPct) / 100;
-      const grand = base + gst + parseFloat(p.transport);
-
-      totalPurchaseBase += base;
-      totalPurchaseGst += gst;
-      totalPurchaseGrand += grand;
-      totalPurchasePaid += parseFloat(p.amountPaid);
-      totalPurchaseTransport += parseFloat(p.transport);
+      const t = computePurchaseTotals(p);
+      totalPurchaseBase = totalPurchaseBase.plus(t.baseAmount);
+      totalPurchaseGst = totalPurchaseGst.plus(t.gstAmount);
+      totalPurchaseGrand = totalPurchaseGrand.plus(t.grandTotal);
+      totalPurchasePaid = totalPurchasePaid.plus(D(p.amountPaid));
+      totalPurchaseTransport = totalPurchaseTransport.plus(D(p.transport));
 
       if (!productPurchases[p.productId]) {
         productPurchases[p.productId] = { totalBase: 0, totalKg: 0 };
       }
-      productPurchases[p.productId].totalBase += base;
-      productPurchases[p.productId].totalKg += totalKg;
+      productPurchases[p.productId].totalBase += t.baseAmount;
+      productPurchases[p.productId].totalKg += t.totalKg;
     }
 
-    // 4. Sales aggregation
-    const allSales = await ctx.db.select().from(sales)
-      .where(and(eq(sales.tenantId, tid), isNull(sales.deletedAt)));
+    // ── Batch-load broker contacts for sales (1 query, not N) ─────────────
+    const brokerIds = [...new Set(
+      allSales.filter((s) => s.viaBroker && s.brokerId).map((s) => s.brokerId!)
+    )];
+    let brokerMap = new Map<string, any>();
+    if (brokerIds.length > 0) {
+      const brokerRows = await ctx.db.select().from(contacts)
+        .where(and(inArray(contacts.id, brokerIds), eq(contacts.tenantId, tid)));
+      brokerMap = new Map(brokerRows.map((r: any) => [r.id, r]));
+    }
+    console.log(`[dashboard] Broker batch load — ${(performance.now() - t1).toFixed(1)}ms`);
 
-    let totalSaleBase = 0;
-    let totalSaleGst = 0;
-    let totalSaleInclGst = 0;
-    let totalSaleReceived = 0;
-    let totalSaleTransport = 0;
-    let totalCogs = 0;
-    let totalBrokerCommission = 0;
-    const salesCount = allSales.length;
-    let pendingSaleCollections = 0;
+    // ── Sale aggregation ──────────────────────────────────────────────────
+    let totalSaleBase = D(0);
+    let totalSaleGst = D(0);
+    let totalSaleInclGst = D(0);
+    let totalSaleReceived = D(0);
+    let totalSaleTransport = D(0);
+    let totalCogs = D(0);
+    let totalBrokerCommission = D(0);
 
     for (const s of allSales) {
-      const totalKg = s.qtyBags * s.kgPerBag;
-      const base = totalKg * parseFloat(s.ratePerKg);
-      const gst = base * parseFloat(s.gstPct) / 100;
-      const inclGst = base + gst;
-
-      totalSaleBase += base;
-      totalSaleGst += gst;
-      totalSaleInclGst += inclGst;
-      totalSaleReceived += parseFloat(s.amountReceived);
-      totalSaleTransport += parseFloat(s.transport);
+      const t = computeSaleTotals(s);
+      totalSaleBase = totalSaleBase.plus(t.baseAmount);
+      totalSaleGst = totalSaleGst.plus(t.gstAmount);
+      totalSaleInclGst = totalSaleInclGst.plus(t.totalInclGst);
+      totalSaleReceived = totalSaleReceived.plus(D(s.amountReceived));
+      totalSaleTransport = totalSaleTransport.plus(D(s.transport));
 
       // COGS using weighted average
       const pp = productPurchases[s.productId];
       const avgCost = pp && pp.totalKg > 0 ? pp.totalBase / pp.totalKg : 0;
-      totalCogs += avgCost * totalKg;
+      totalCogs = totalCogs.plus(D(avgCost).mul(t.totalKg));
 
       // Broker commission
       if (s.viaBroker && s.brokerId) {
-        const broker = await ctx.db.select().from(contacts).where(eq(contacts.id, s.brokerId)).then(r => r[0]);
+        const broker = brokerMap.get(s.brokerId);
         if (broker) {
-          if (broker.brokerCommissionType === "per_bag") {
-            totalBrokerCommission += s.qtyBags * parseFloat(broker.brokerCommissionValue ?? "0");
-          } else if (broker.brokerCommissionType === "percentage") {
-            totalBrokerCommission += base * parseFloat(broker.brokerCommissionValue ?? "0") / 100;
-          }
+          totalBrokerCommission = totalBrokerCommission.plus(
+            computeBrokerCommission(
+              broker.brokerCommissionType,
+              broker.brokerCommissionValue,
+              s.qtyBags,
+              t.baseAmount
+            )
+          );
         }
       }
     }
 
-    // 5. Payments aggregation
-    const allPayments = await ctx.db.select().from(payments)
-      .where(and(eq(payments.tenantId, tid), isNull(payments.deletedAt)));
+    // ── Payment aggregation ───────────────────────────────────────────────
+    // Batch-load party contacts for payments (1 query, not N)
+    const paymentPartyIds = [...new Set(allPayments.map((p) => p.partyId))];
+    let partyMap = new Map<string, any>();
+    if (paymentPartyIds.length > 0) {
+      const partyRows = await ctx.db.select().from(contacts)
+        .where(and(inArray(contacts.id, paymentPartyIds), eq(contacts.tenantId, tid)));
+      partyMap = new Map(partyRows.map((r: any) => [r.id, r]));
+    }
+    const t2 = performance.now();
+    console.log(`[dashboard] Party batch load — ${(t2 - t1).toFixed(1)}ms`);
 
-    let totalPaymentsPaid = 0;
-    let totalPaymentsReceived = 0;
-    let totalBrokerPaid = 0;
+    let totalPaymentsPaid = D(0);
+    let totalPaymentsReceived = D(0);
+    let totalBrokerPaid = D(0);
 
     for (const pay of allPayments) {
       if (pay.direction === "Paid") {
-        totalPaymentsPaid += parseFloat(pay.amount);
-        const party = await ctx.db.select().from(contacts).where(eq(contacts.id, pay.partyId)).then(r => r[0]);
+        totalPaymentsPaid = totalPaymentsPaid.plus(D(pay.amount));
+        const party = partyMap.get(pay.partyId);
         if (party?.type === "Broker") {
-          totalBrokerPaid += parseFloat(pay.amount);
+          totalBrokerPaid = totalBrokerPaid.plus(D(pay.amount));
         }
       } else {
-        totalPaymentsReceived += parseFloat(pay.amount);
+        totalPaymentsReceived = totalPaymentsReceived.plus(D(pay.amount));
       }
     }
 
-    // Compute payables and receivables
-    const totalPayables = totalPurchaseGrand - totalPurchasePaid - totalPaymentsPaid + totalBrokerPaid;
-    const totalReceivables = totalSaleInclGst - totalSaleReceived - totalPaymentsReceived;
+    // ── Derived metrics ───────────────────────────────────────────────────
+    const totalPayables = totalPurchaseGrand.minus(totalPurchasePaid).minus(totalPaymentsPaid).plus(totalBrokerPaid);
+    const totalReceivables = totalSaleInclGst.minus(totalSaleReceived).minus(totalPaymentsReceived);
 
-    // Count pending
-    pendingPurchasePayments = allPurchases.filter(p => {
-      const totalKg = p.qtyBags * p.kgPerBag;
-      const base = totalKg * parseFloat(p.ratePerKg);
-      const gst = base * parseFloat(p.gstPct) / 100;
-      const grand = base + gst + parseFloat(p.transport);
-      return parseFloat(p.amountPaid) < grand;
+    const pendingPurchasePayments = allPurchases.filter((p) => {
+      const t = computePurchaseTotals(p);
+      return D(p.amountPaid).lt(t.grandTotal);
     }).length;
 
-    pendingSaleCollections = allSales.filter(s => {
-      const totalKg = s.qtyBags * s.kgPerBag;
-      const base = totalKg * parseFloat(s.ratePerKg);
-      const gst = base * parseFloat(s.gstPct) / 100;
-      const inclGst = base + gst;
-      return parseFloat(s.amountReceived) < inclGst;
+    const pendingSaleCollections = allSales.filter((s) => {
+      const t = computeSaleTotals(s);
+      return D(s.amountReceived).lt(t.totalInclGst);
     }).length;
 
-    // Cash in inventory
-    const cashInInventory = totalPurchaseBase - totalCogs;
+    const cashInInventory = totalPurchaseBase.minus(totalCogs);
+    const netGst = totalSaleGst.minus(totalPurchaseGst);
+    const itcAvailable = netGst.lt(0) ? netGst.abs() : D(0);
 
-    // GST
-    const netGst = totalSaleGst - totalPurchaseGst;
-    const itcAvailable = netGst < 0 ? Math.abs(netGst) : 0;
+    const grossMargin = totalSaleBase.minus(totalCogs).minus(totalSaleTransport).minus(totalBrokerCommission);
+    const grossMarginPct = totalSaleBase.gt(0) ? grossMargin.div(totalSaleBase).mul(100) : D(0);
+    const netMargin = grossMargin.minus(actualInterest);
+    const netMarginPct = totalSaleBase.gt(0) ? netMargin.div(totalSaleBase).mul(100) : D(0);
+    const brokerCommissionPending = totalBrokerCommission.minus(totalBrokerPaid);
 
-    // Margins
-    const grossMargin = totalSaleBase - totalCogs - totalSaleTransport - totalBrokerCommission;
-    const grossMarginPct = totalSaleBase > 0 ? (grossMargin / totalSaleBase) * 100 : 0;
-    const netMargin = grossMargin - actualInterest;
-    const netMarginPct = totalSaleBase > 0 ? (netMargin / totalSaleBase) * 100 : 0;
-
-    // Broker commission pending
-    const brokerCommissionPending = totalBrokerCommission - totalBrokerPaid;
-
-    // 6. Inventory per product
-    const allProducts = await ctx.db.select().from(products)
-      .where(and(eq(products.tenantId, tid), isNull(products.deletedAt)));
-
-    const inventory = allProducts.map(prod => {
-      const purchasedBags = allPurchases.filter(p => p.productId === prod.id).reduce((s, p) => s + p.qtyBags, 0);
-      const purchasedKg = allPurchases.filter(p => p.productId === prod.id).reduce((s, p) => s + p.qtyBags * p.kgPerBag, 0);
-      const soldBags = allSales.filter(s => s.productId === prod.id).reduce((acc, s) => acc + s.qtyBags, 0);
-      const soldKg = allSales.filter(s => s.productId === prod.id).reduce((acc, s) => acc + s.qtyBags * s.kgPerBag, 0);
+    // ── Inventory per product ─────────────────────────────────────────────
+    const inventory = allProducts.map((prod) => {
+      const purchasedBags = allPurchases
+        .filter((p) => p.productId === prod.id)
+        .reduce((s, p) => s + p.qtyBags, 0);
+      const purchasedKg = allPurchases
+        .filter((p) => p.productId === prod.id)
+        .reduce((s, p) => s + p.qtyBags * p.kgPerBag, 0);
+      const soldBags = allSales
+        .filter((s) => s.productId === prod.id)
+        .reduce((acc, s) => acc + s.qtyBags, 0);
+      const soldKg = allSales
+        .filter((s) => s.productId === prod.id)
+        .reduce((acc, s) => acc + s.qtyBags * s.kgPerBag, 0);
       return {
-        productName: `${prod.millBrand} ${prod.fibreType} ${prod.count} ${prod.qualityGrade}`,
+        productName: productFullName(prod),
         bagsInHand: purchasedBags - soldBags,
         kgInHand: purchasedKg - soldKg,
       };
-    }).filter(i => i.bagsInHand > 0);
+    }).filter((i) => i.bagsInHand > 0);
+
+    console.log(`[dashboard] Logic/computation — ${(performance.now() - t2).toFixed(1)}ms`);
+    console.log(`[dashboard] Total — ${(performance.now() - t0).toFixed(1)}ms`);
 
     return {
       cc: {
         limit: ccLimit,
         outstanding: ccBalance,
-        available: ccAvailable,
-        utilizationPct: Math.round(ccUtilization * 100) / 100,
-        calculatedInterest: Math.round(calcInterest * 100) / 100,
-        actualInterest: Math.round(actualInterest * 100) / 100,
-        difference: Math.round((calcInterest - actualInterest) * 100) / 100,
+        available: toMoney(D(ccLimit).minus(ccBalance)),
+        utilizationPct: ccLimit > 0 ? toMoney(D(ccBalance).div(ccLimit).mul(100)) : 0,
+        calculatedInterest: calcInterest,
+        actualInterest: toMoney(D(actualInterest)),
+        difference: toMoney(D(calcInterest).minus(actualInterest)),
       },
       money: {
-        cashInInventory: Math.round(cashInInventory * 100) / 100,
-        totalReceivables: Math.round(totalReceivables * 100) / 100,
-        totalPayables: Math.round(Math.max(0, totalPayables) * 100) / 100,
-        brokerPending: Math.round(Math.max(0, brokerCommissionPending) * 100) / 100,
-        totalTransport: Math.round((totalPurchaseTransport + totalSaleTransport) * 100) / 100,
+        cashInInventory: toMoney(cashInInventory),
+        totalReceivables: toMoney(totalReceivables),
+        totalPayables: toMoney(Decimal_max(totalPayables, D(0))),
+        brokerPending: toMoney(Decimal_max(brokerCommissionPending, D(0))),
+        totalTransport: toMoney(totalPurchaseTransport.plus(totalSaleTransport)),
       },
       gst: {
-        outputGst: Math.round(totalSaleGst * 100) / 100,
-        inputGst: Math.round(totalPurchaseGst * 100) / 100,
-        netPayable: Math.round(netGst * 100) / 100,
-        itcAvailable: Math.round(itcAvailable * 100) / 100,
+        outputGst: toMoney(totalSaleGst),
+        inputGst: toMoney(totalPurchaseGst),
+        netPayable: toMoney(netGst),
+        itcAvailable: toMoney(itcAvailable),
       },
       margins: {
-        revenue: Math.round(totalSaleBase * 100) / 100,
-        cogs: Math.round(totalCogs * 100) / 100,
-        transport: Math.round(totalSaleTransport * 100) / 100,
-        brokerCommission: Math.round(totalBrokerCommission * 100) / 100,
-        grossMargin: Math.round(grossMargin * 100) / 100,
-        grossMarginPct: Math.round(grossMarginPct * 100) / 100,
-        ccInterest: Math.round(actualInterest * 100) / 100,
-        netMargin: Math.round(netMargin * 100) / 100,
-        netMarginPct: Math.round(netMarginPct * 100) / 100,
+        revenue: toMoney(totalSaleBase),
+        cogs: toMoney(totalCogs),
+        transport: toMoney(totalSaleTransport),
+        brokerCommission: toMoney(totalBrokerCommission),
+        grossMargin: toMoney(grossMargin),
+        grossMarginPct: toMoney(grossMarginPct),
+        ccInterest: toMoney(D(actualInterest)),
+        netMargin: toMoney(netMargin),
+        netMarginPct: toMoney(netMarginPct),
       },
       inventory,
       stats: {
-        totalPurchases: purchaseCount,
-        totalSales: salesCount,
+        totalPurchases: allPurchases.length,
+        totalSales: allSales.length,
         pendingPayments: pendingPurchasePayments,
         pendingCollections: pendingSaleCollections,
       },
     };
   }),
 });
+
+// Decimal doesn't have a static max
+import Decimal from "decimal.js";
+function Decimal_max(a: Decimal, b: Decimal): Decimal {
+  return a.gte(b) ? a : b;
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatIndianCurrency, parseIndianAmount, formatDate, generateDisplayId } from "../utils";
+import { formatIndianCurrency, parseIndianAmount, formatDate } from "../utils";
 
 describe("formatIndianCurrency", () => {
   it("formats zero", () => {
@@ -70,20 +70,6 @@ describe("parseIndianAmount", () => {
 
   it("handles empty string", () => {
     expect(parseIndianAmount("")).toBeNull();
-  });
-});
-
-describe("generateDisplayId", () => {
-  it("generates first ID", () => {
-    expect(generateDisplayId("P", null)).toBe("P001");
-  });
-
-  it("generates next ID", () => {
-    expect(generateDisplayId("P", "P001")).toBe("P002");
-  });
-
-  it("handles double digits", () => {
-    expect(generateDisplayId("S", "S099")).toBe("S100");
   });
 });
 

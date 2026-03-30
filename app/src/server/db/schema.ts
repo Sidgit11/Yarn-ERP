@@ -9,11 +9,12 @@ import {
   date,
   pgEnum,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 // Enums
-export const contactTypeEnum = pgEnum("contact_type", ["Mill", "Buyer", "Broker"]);
+export const contactTypeEnum = pgEnum("contact_type", ["Mill", "Buyer", "Broker", "Transporter"]);
 export const brokerCommissionTypeEnum = pgEnum("broker_commission_type", ["per_bag", "percentage"]);
 export const fibreTypeEnum = pgEnum("fibre_type", ["PC", "Cotton", "Polyester", "Viscose", "Nylon", "Acrylic", "Blended"]);
 export const qualityGradeEnum = pgEnum("quality_grade", ["Top", "Standard", "Economy"]);
@@ -24,7 +25,8 @@ export const ccEventEnum = pgEnum("cc_event", ["Draw", "Repay"]);
 // Users table (for auth)
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
-  phone: text("phone").notNull().unique(),
+  phone: text("phone").unique(),
+  email: text("email").unique(),
   passwordHash: text("password_hash").notNull(),
   name: text("name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -66,6 +68,7 @@ export const contacts = pgTable("contacts", {
   city: text("city"),
   brokerCommissionType: brokerCommissionTypeEnum("broker_commission_type"),
   brokerCommissionValue: numeric("broker_commission_value", { precision: 14, scale: 2 }),
+  transporterRatePerBag: numeric("transporter_rate_per_bag", { precision: 14, scale: 2 }),
   notes: text("notes"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -116,6 +119,7 @@ export const purchases = pgTable("purchases", {
   index("idx_purchases_tenant").on(table.tenantId),
   index("idx_purchases_product").on(table.productId),
   index("idx_purchases_supplier").on(table.supplierId),
+  uniqueIndex("uq_purchases_tenant_display").on(table.tenantId, table.displayId),
 ]);
 
 // Sales - Selling yarn to buyers
@@ -141,6 +145,7 @@ export const sales = pgTable("sales", {
   index("idx_sales_tenant").on(table.tenantId),
   index("idx_sales_product").on(table.productId),
   index("idx_sales_buyer").on(table.buyerId),
+  uniqueIndex("uq_sales_tenant_display").on(table.tenantId, table.displayId),
 ]);
 
 // Payments - All cash movements
@@ -153,6 +158,7 @@ export const payments = pgTable("payments", {
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
   mode: paymentModeEnum("mode").notNull(),
   againstTxnId: text("against_txn_id"), // "P001" or "S001"
+  viaCC: boolean("via_cc").default(false).notNull(),
   reference: text("reference"),
   notes: text("notes"),
   deletedAt: timestamp("deleted_at"),
@@ -176,7 +182,21 @@ export const ccEntries = pgTable("cc_entries", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
+  index("idx_cc_entries_tenant").on(table.tenantId),
   index("idx_cc_entries_date").on(table.date),
+]);
+
+// Rate Change Log - tracks when broker/transporter rates are changed
+export const rateChangeLog = pgTable("rate_change_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").notNull(),
+  contactId: uuid("contact_id").references(() => contacts.id).notNull(),
+  fieldChanged: text("field_changed").notNull(), // "brokerCommissionType", "brokerCommissionValue", "transporterRatePerBag"
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_rate_change_log_contact").on(table.contactId),
 ]);
 
 // ============================================================

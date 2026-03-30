@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency } from "@/lib/utils";
 import { MONTHS } from "@/lib/constants";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 interface ConfigFormData {
   ccLimit: string;
@@ -30,6 +31,66 @@ function getCurrentFY(): string {
   const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const nextYear = year + 1;
   return `${year}-${String(nextYear).slice(2)}`;
+}
+
+function DataExportSection() {
+  const [exporting, setExporting] = useState(false);
+  const exportQuery = trpc.export.allData.useQuery(undefined, { enabled: false });
+
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const result = await exportQuery.refetch();
+      if (!result.data) {
+        toast.error("No data to export");
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+      const sheets = [
+        { name: "Contacts", data: result.data.contacts },
+        { name: "Products", data: result.data.products },
+        { name: "Purchases", data: result.data.purchases },
+        { name: "Sales", data: result.data.sales },
+        { name: "Payments", data: result.data.payments },
+        { name: "CC Ledger", data: result.data.ccEntries },
+      ];
+
+      for (const sheet of sheets) {
+        if (sheet.data.length > 0) {
+          const ws = XLSX.utils.json_to_sheet(sheet.data);
+          XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+        }
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      XLSX.writeFile(wb, `SYT_ERP_Export_${today}.xlsx`);
+      toast.success("Data exported successfully");
+    } catch {
+      toast.error("Failed to export data");
+    } finally {
+      setExporting(false);
+    }
+  }, [exportQuery]);
+
+  return (
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-4 md:p-6 mb-6">
+      <h2 className="text-lg font-semibold text-[#2C3E50] mb-2 pl-3 border-l-4 border-[#27AE60]">
+        Data Export
+      </h2>
+      <p className="text-sm text-[#6C757D] mb-4">
+        Download all your data as an Excel file with separate sheets for contacts,
+        products, purchases, sales, payments, and CC ledger.
+      </p>
+      <button
+        onClick={handleExport}
+        disabled={exporting}
+        className="w-full sm:w-auto min-h-[48px] px-6 py-3 text-base font-semibold text-white bg-[#27AE60] rounded-xl hover:bg-[#219A52] transition-colors disabled:opacity-50"
+      >
+        {exporting ? "Preparing download..." : "Download All Data (.xlsx)"}
+      </button>
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -259,6 +320,9 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Data Export */}
+      <DataExportSection />
 
       {/* Monthly CC Interest */}
       <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-4 md:p-6">

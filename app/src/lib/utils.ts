@@ -57,9 +57,3 @@ export function formatDate(date: string | Date): string {
   });
 }
 
-// Generate next display ID
-export function generateDisplayId(prefix: string, lastId: string | null): string {
-  if (!lastId) return `${prefix}001`;
-  const num = parseInt(lastId.replace(prefix, ""), 10);
-  return `${prefix}${String(num + 1).padStart(3, "0")}`;
-}

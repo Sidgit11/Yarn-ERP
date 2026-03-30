@@ -5,13 +5,14 @@ import { trpc } from "@/lib/trpc";
 import { CONTACT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-type ContactType = "Mill" | "Buyer" | "Broker";
+type ContactType = "Mill" | "Buyer" | "Broker" | "Transporter";
 type FilterTab = "All" | ContactType;
 
 const TYPE_BADGE_COLORS: Record<ContactType, string> = {
   Mill: "bg-[#D6EAF8] text-[#2980B9] border border-[#2980B9]",
   Buyer: "bg-[#D5F5E3] text-[#27AE60] border border-[#27AE60]",
   Broker: "bg-[#FDEBD0] text-[#E67E22] border border-[#E67E22]",
+  Transporter: "bg-[#E8DAEF] text-[#6C3483] border border-[#8E44AD]",
 };
 
 interface ContactFormData {
@@ -21,6 +22,7 @@ interface ContactFormData {
   city: string;
   brokerCommissionType: "per_bag" | "percentage";
   brokerCommissionValue: string;
+  transporterRatePerBag: string;
   notes: string;
 }
 
@@ -31,6 +33,7 @@ const emptyForm: ContactFormData = {
   city: "",
   brokerCommissionType: "per_bag",
   brokerCommissionValue: "",
+  transporterRatePerBag: "",
   notes: "",
 };
 
@@ -89,6 +92,7 @@ export default function ContactsPage() {
       city: contact.city ?? "",
       brokerCommissionType: contact.brokerCommissionType ?? "per_bag",
       brokerCommissionValue: contact.brokerCommissionValue ?? "",
+      transporterRatePerBag: contact.transporterRatePerBag ?? "",
       notes: contact.notes ?? "",
     });
     setModalOpen(true);
@@ -101,6 +105,19 @@ export default function ContactsPage() {
   }
 
   function handleSave() {
+    // Warn about rate changes not affecting past data
+    if (editingId && (form.type === "Broker" || form.type === "Transporter")) {
+      const isRateChange = form.type === "Transporter"
+        ? form.transporterRatePerBag !== ""
+        : form.brokerCommissionValue !== "";
+      if (isRateChange) {
+        const confirmed = window.confirm(
+          "Changing rates will only apply to future transactions.\n\nPast purchases, sales, and calculated costs will NOT be updated. Continue?"
+        );
+        if (!confirmed) return;
+      }
+    }
+
     const payload = {
       name: form.name,
       type: form.type,
@@ -108,6 +125,7 @@ export default function ContactsPage() {
       city: form.city || undefined,
       brokerCommissionType: form.type === "Broker" ? form.brokerCommissionType : undefined,
       brokerCommissionValue: form.type === "Broker" && form.brokerCommissionValue ? form.brokerCommissionValue : undefined,
+      transporterRatePerBag: form.type === "Transporter" && form.transporterRatePerBag ? form.transporterRatePerBag : undefined,
       notes: form.notes || undefined,
     };
 
@@ -231,11 +249,16 @@ export default function ContactsPage() {
                   {contact.city && <span>{contact.city}</span>}
                 </div>
                 {contact.type === "Broker" && contact.brokerCommissionValue && (
-                  <div className="mt-1 text-sm text-orange-700">
+                  <div className="mt-1 text-sm text-[#E67E22]">
                     Commission:{" "}
                     {contact.brokerCommissionType === "per_bag"
-                      ? `Rs.${parseFloat(contact.brokerCommissionValue).toFixed(2)}/bag`
+                      ? `₹${parseFloat(contact.brokerCommissionValue).toFixed(2)}/bag`
                       : `${parseFloat(contact.brokerCommissionValue).toFixed(2)}%`}
+                  </div>
+                )}
+                {contact.type === "Transporter" && contact.transporterRatePerBag && (
+                  <div className="mt-1 text-sm text-[#6C3483]">
+                    Rate: ₹{parseFloat(contact.transporterRatePerBag).toFixed(2)}/bag
                   </div>
                 )}
               </div>
@@ -288,9 +311,19 @@ export default function ContactsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
             <div className="p-6">
-              <h2 className="text-lg font-semibold text-[#2C3E50] mb-4">
-                {editingId ? "Edit Contact" : "Add Contact"}
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-[#2C3E50]">
+                  {editingId ? "Edit Contact" : "Add Contact"}
+                </h2>
+                <button
+                  onClick={closeModal}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-[#6C757D] hover:text-[#2C3E50] transition-colors rounded-lg hover:bg-[#F8F9FA]"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
 
               <div className="space-y-4">
                 {/* Name */}
@@ -420,6 +453,39 @@ export default function ContactsPage() {
                         }
                       />
                     </div>
+                  </div>
+                )}
+
+                {/* Transporter Rate Section */}
+                {form.type === "Transporter" && (
+                  <div className="bg-[#E8DAEF] border border-[#8E44AD] rounded-xl p-4 space-y-3">
+                    <h4 className="text-sm font-semibold text-[#6C3483]">Transport Rate</h4>
+                    <div>
+                      <label className="block text-sm font-medium text-[#2C3E50] mb-1.5">
+                        Rate per Bag{" "}
+                        <span className="text-[#6C757D]">(₹/bag)</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6C757D] text-base font-medium">
+                          ₹
+                        </span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={form.transporterRatePerBag}
+                          onChange={(e) =>
+                            setForm({ ...form, transporterRatePerBag: e.target.value })
+                          }
+                          className="w-full pl-8 pr-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#8E44AD] focus:border-transparent"
+                          placeholder="e.g. 25.00"
+                        />
+                      </div>
+                    </div>
+                    {editingId && (
+                      <p className="text-xs text-[#6C3483]">
+                        Changing this rate will only apply to future transactions. Past costs will not be updated.
+                      </p>
+                    )}
                   </div>
                 )}
 

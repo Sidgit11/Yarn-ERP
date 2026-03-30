@@ -1,7 +1,16 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
-import { payments, contacts, purchases, sales } from "../../db/schema";
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { payments, contacts, purchases, sales, ccEntries } from "../../db/schema";
+import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
+import {
+  computePurchaseTotals,
+  computeSaleTotals,
+  monetaryString,
+  isoDateString,
+  D,
+  toMoney,
+} from "../../services/calculations";
 
 export const paymentsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -11,40 +20,39 @@ export const paymentsRouter = router({
       .where(and(eq(payments.tenantId, ctx.tenantId), isNull(payments.deletedAt)))
       .orderBy(desc(payments.date));
 
-    // Enrich with party name
-    const result = await Promise.all(
-      rows.map(async (p) => {
-        const party = await ctx.db
-          .select()
-          .from(contacts)
-          .where(eq(contacts.id, p.partyId))
-          .then((r) => r[0]);
-        return {
-          ...p,
-          partyName: party?.name ?? "",
-          partyType: party?.type ?? "",
-        };
-      })
-    );
-    return result;
+    if (rows.length === 0) return [];
+
+    // Batch-load party contacts (1 query instead of N)
+    const partyIds = [...new Set(rows.map((r) => r.partyId))];
+    const partyRows = await ctx.db
+      .select()
+      .from(contacts)
+      .where(and(inArray(contacts.id, partyIds), eq(contacts.tenantId, ctx.tenantId)));
+    const partyMap = new Map(partyRows.map((r: any) => [r.id, r]));
+
+    return rows.map((p) => {
+      const party = partyMap.get(p.partyId);
+      return {
+        ...p,
+        partyName: party?.name ?? "",
+        partyType: party?.type ?? "",
+      };
+    });
   }),
 
-  // Get open transactions for a party (for "Against Txn" dropdown)
   openTransactions: protectedProcedure
     .input(z.object({ partyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      // Get party to determine type
       const party = await ctx.db
         .select()
         .from(contacts)
-        .where(eq(contacts.id, input.partyId))
-        .then((r) => r[0]);
+        .where(and(eq(contacts.id, input.partyId), eq(contacts.tenantId, ctx.tenantId)))
+        .then((r: any[]) => r[0]);
       if (!party) return [];
 
       const txns: Array<{ displayId: string; label: string }> = [];
 
       if (party.type === "Mill") {
-        // Get purchases from this supplier with balance > 0
         const purchaseRows = await ctx.db
           .select()
           .from(purchases)
@@ -55,28 +63,17 @@ export const paymentsRouter = router({
               isNull(purchases.deletedAt)
             )
           );
+
+        // Batch-load linked payments for all these purchases
+        const displayIds = purchaseRows.map((p: any) => p.displayId);
+        const linkedMap = await batchLinkedPayments(ctx.db, ctx.tenantId, displayIds);
+
         for (const p of purchaseRows) {
-          const totalKg = p.qtyBags * p.kgPerBag;
-          const baseAmount = totalKg * parseFloat(p.ratePerKg);
-          const gstAmount = (baseAmount * parseFloat(p.gstPct)) / 100;
-          const grandTotal = baseAmount + gstAmount + parseFloat(p.transport);
-
-          // Get linked payments total
-          const linked = await ctx.db
-            .select({
-              total: sql<string>`COALESCE(SUM(${payments.amount}::numeric), 0)`,
-            })
-            .from(payments)
-            .where(
-              and(
-                eq(payments.againstTxnId, p.displayId),
-                eq(payments.partyId, input.partyId),
-                isNull(payments.deletedAt)
-              )
-            );
-          const linkedTotal = parseFloat(linked[0]?.total ?? "0");
-          const balance = grandTotal - parseFloat(p.amountPaid) - linkedTotal;
-
+          const totals = computePurchaseTotals(p);
+          const linked = linkedMap.get(p.displayId) ?? 0;
+          const balance = toMoney(
+            D(totals.grandTotal).minus(D(p.amountPaid)).minus(linked)
+          );
           if (balance > 0) {
             txns.push({
               displayId: p.displayId,
@@ -95,27 +92,16 @@ export const paymentsRouter = router({
               isNull(sales.deletedAt)
             )
           );
+
+        const displayIds = saleRows.map((s: any) => s.displayId);
+        const linkedMap = await batchLinkedPayments(ctx.db, ctx.tenantId, displayIds);
+
         for (const s of saleRows) {
-          const totalKg = s.qtyBags * s.kgPerBag;
-          const baseAmount = totalKg * parseFloat(s.ratePerKg);
-          const gstAmount = (baseAmount * parseFloat(s.gstPct)) / 100;
-          const totalInclGst = baseAmount + gstAmount;
-
-          const linked = await ctx.db
-            .select({
-              total: sql<string>`COALESCE(SUM(${payments.amount}::numeric), 0)`,
-            })
-            .from(payments)
-            .where(
-              and(
-                eq(payments.againstTxnId, s.displayId),
-                eq(payments.partyId, input.partyId),
-                isNull(payments.deletedAt)
-              )
-            );
-          const linkedTotal = parseFloat(linked[0]?.total ?? "0");
-          const balance = totalInclGst - parseFloat(s.amountReceived) - linkedTotal;
-
+          const totals = computeSaleTotals(s);
+          const linked = linkedMap.get(s.displayId) ?? 0;
+          const balance = toMoney(
+            D(totals.totalInclGst).minus(D(s.amountReceived)).minus(linked)
+          );
           if (balance > 0) {
             txns.push({
               displayId: s.displayId,
@@ -130,43 +116,160 @@ export const paymentsRouter = router({
   create: protectedProcedure
     .input(
       z.object({
-        date: z.string(),
+        date: isoDateString,
         partyId: z.string().uuid(),
         direction: z.enum(["Paid", "Received"]),
-        amount: z.string(),
+        amount: monetaryString,
         mode: z.enum(["Cash", "NEFT", "UPI", "Cheque", "RTGS"]),
         againstTxnId: z.string().optional(),
         reference: z.string().optional(),
         notes: z.string().optional(),
+        viaCC: z.boolean().default(false),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await ctx.db
-        .insert(payments)
-        .values({
-          tenantId: ctx.tenantId,
-          date: input.date,
-          partyId: input.partyId,
-          direction: input.direction,
-          amount: input.amount,
-          mode: input.mode,
-          againstTxnId: input.againstTxnId || null,
-          reference: input.reference || null,
-          notes: input.notes || null,
-        })
-        .returning();
-      return result[0];
+      return await ctx.db.transaction(async (tx: any) => {
+        // 1. Insert payment
+        const result = await tx
+          .insert(payments)
+          .values({
+            tenantId: ctx.tenantId,
+            date: input.date,
+            partyId: input.partyId,
+            direction: input.direction,
+            amount: input.amount,
+            mode: input.mode,
+            againstTxnId: input.againstTxnId || null,
+            reference: input.reference || null,
+            notes: input.notes || null,
+            viaCC: input.viaCC,
+          })
+          .returning();
+        const payment = result[0];
+
+        // 2. Auto-create CC entry if viaCC
+        if (input.viaCC) {
+          // Fetch party name for the CC note
+          const party = await tx
+            .select({ name: contacts.name })
+            .from(contacts)
+            .where(eq(contacts.id, input.partyId))
+            .then((r: any[]) => r[0]);
+          const partyName = party?.name ?? "Unknown";
+          const txnRef = input.againstTxnId ? ` (${input.againstTxnId})` : "";
+
+          const ccEvent = input.direction === "Paid" ? "Draw" : "Repay";
+          const ccNote =
+            input.direction === "Paid"
+              ? `Auto: Payment to ${partyName}${txnRef}`
+              : `Auto: Received from ${partyName}${txnRef}`;
+
+          // Get last CC balance
+          const lastEntry = await tx
+            .select()
+            .from(ccEntries)
+            .where(eq(ccEntries.tenantId, ctx.tenantId))
+            .orderBy(desc(ccEntries.date), desc(ccEntries.createdAt))
+            .limit(1);
+
+          const prevBalance = D(lastEntry[0]?.runningBalance ?? "0");
+          const amount = D(input.amount);
+          const newBalance =
+            ccEvent === "Draw"
+              ? prevBalance.plus(amount)
+              : prevBalance.minus(amount);
+
+          await tx.insert(ccEntries).values({
+            tenantId: ctx.tenantId,
+            date: input.date,
+            event: ccEvent,
+            amount: input.amount,
+            runningBalance: newBalance.toFixed(2),
+            notes: ccNote,
+          });
+        }
+
+        return payment;
+      });
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db
-        .update(payments)
-        .set({ deletedAt: new Date() })
-        .where(
-          and(eq(payments.id, input.id), eq(payments.tenantId, ctx.tenantId))
-        );
-      return { success: true };
+      return await ctx.db.transaction(async (tx: any) => {
+        // Soft-delete the payment and get its details
+        const result = await tx
+          .update(payments)
+          .set({ deletedAt: new Date() })
+          .where(
+            and(eq(payments.id, input.id), eq(payments.tenantId, ctx.tenantId))
+          )
+          .returning();
+
+        if (result.length === 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Payment not found",
+          });
+        }
+
+        const payment = result[0];
+
+        // If payment was via CC, create a reversing CC entry
+        if (payment.viaCC) {
+          const reverseEvent = payment.direction === "Paid" ? "Repay" : "Draw";
+
+          const lastEntry = await tx
+            .select()
+            .from(ccEntries)
+            .where(eq(ccEntries.tenantId, ctx.tenantId))
+            .orderBy(desc(ccEntries.date), desc(ccEntries.createdAt))
+            .limit(1);
+
+          const prevBalance = D(lastEntry[0]?.runningBalance ?? "0");
+          const amount = D(payment.amount);
+          const newBalance =
+            reverseEvent === "Draw"
+              ? prevBalance.plus(amount)
+              : prevBalance.minus(amount);
+
+          await tx.insert(ccEntries).values({
+            tenantId: ctx.tenantId,
+            date: new Date().toISOString().split("T")[0],
+            event: reverseEvent,
+            amount: payment.amount,
+            runningBalance: newBalance.toFixed(2),
+            notes: "Auto-reversed: deleted payment",
+          });
+        }
+
+        return { success: true };
+      });
     }),
 });
+
+// ── Helper ──────────────────────────────────────────────────────────────────
+
+async function batchLinkedPayments(
+  db: any,
+  tenantId: string,
+  displayIds: string[]
+): Promise<Map<string, number>> {
+  if (displayIds.length === 0) return new Map();
+  const unique = [...new Set(displayIds)];
+  const rows = await db
+    .select({
+      againstTxnId: payments.againstTxnId,
+      total: sql<string>`COALESCE(SUM(${payments.amount}::numeric), 0)`,
+    })
+    .from(payments)
+    .where(
+      and(
+        inArray(payments.againstTxnId, unique),
+        eq(payments.tenantId, tenantId),
+        isNull(payments.deletedAt)
+      )
+    )
+    .groupBy(payments.againstTxnId);
+  return new Map(rows.map((r: any) => [r.againstTxnId!, parseFloat(r.total)]));
+}

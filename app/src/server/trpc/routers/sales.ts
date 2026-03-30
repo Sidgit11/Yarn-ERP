@@ -1,144 +1,190 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
 import { sales, contacts, products, purchases, payments } from "../../db/schema";
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
+import {
+  computeSaleTotals,
+  computeSaleBalance,
+  computeBrokerCommission,
+  computeAvgCostPerKg,
+  productFullName,
+  monetaryString,
+  isoDateString,
+  percentageString,
+  D,
+  toMoney,
+} from "../../services/calculations";
+
+// ── Batch helpers (shared pattern) ──────────────────────────────────────────
+
+async function loadContactMap(db: any, tenantId: string, ids: string[]): Promise<Map<string, any>> {
+  if (ids.length === 0) return new Map();
+  const unique = [...new Set(ids)];
+  const rows = await db
+    .select()
+    .from(contacts)
+    .where(and(inArray(contacts.id, unique), eq(contacts.tenantId, tenantId)));
+  return new Map(rows.map((r: any) => [r.id, r]));
+}
+
+async function loadProductMap(db: any, tenantId: string, ids: string[]): Promise<Map<string, any>> {
+  if (ids.length === 0) return new Map();
+  const unique = [...new Set(ids)];
+  const rows = await db
+    .select()
+    .from(products)
+    .where(and(inArray(products.id, unique), eq(products.tenantId, tenantId)));
+  return new Map(rows.map((r: any) => [r.id, r]));
+}
+
+async function loadLinkedPayments(db: any, tenantId: string, displayIds: string[]): Promise<Map<string, number>> {
+  if (displayIds.length === 0) return new Map<string, number>();
+  const unique = [...new Set(displayIds)];
+  const rows = await db
+    .select({
+      againstTxnId: payments.againstTxnId,
+      total: sql<string>`COALESCE(SUM(${payments.amount}::numeric), 0)`,
+    })
+    .from(payments)
+    .where(
+      and(
+        inArray(payments.againstTxnId, unique),
+        eq(payments.tenantId, tenantId),
+        isNull(payments.deletedAt)
+      )
+    )
+    .groupBy(payments.againstTxnId);
+  return new Map(rows.map((r: any) => [r.againstTxnId!, parseFloat(r.total)]));
+}
+
+/** Batch-load avg cost per kg for each product ID. Single aggregate query. */
+async function loadAvgCosts(
+  db: any,
+  tenantId: string,
+  productIds: string[]
+): Promise<Map<string, number>> {
+  if (productIds.length === 0) return new Map();
+  const unique = [...new Set(productIds)];
+  const rows = await db
+    .select({
+      productId: purchases.productId,
+      totalBase: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag} * ${purchases.ratePerKg}::numeric), 0)`,
+      totalKg: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag}), 0)`,
+    })
+    .from(purchases)
+    .where(
+      and(
+        inArray(purchases.productId, unique),
+        eq(purchases.tenantId, tenantId),
+        isNull(purchases.deletedAt)
+      )
+    )
+    .groupBy(purchases.productId);
+
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    map.set(r.productId, computeAvgCostPerKg(r.totalBase, r.totalKg));
+  }
+  return map;
+}
+
+// ── Enrichment ──────────────────────────────────────────────────────────────
+
+function enrichSale(
+  s: typeof sales.$inferSelect,
+  product: any | undefined,
+  buyer: any | undefined,
+  broker: any | undefined | null,
+  linkedPayments: number,
+  avgCostPerKg: number
+) {
+  const totals = computeSaleTotals(s);
+  const cogs = toMoney(D(avgCostPerKg).mul(totals.totalKg));
+  const transport = toMoney(D(s.transport));
+
+  const brokerCommission = broker
+    ? computeBrokerCommission(
+        broker.brokerCommissionType,
+        broker.brokerCommissionValue,
+        s.qtyBags,
+        totals.baseAmount
+      )
+    : 0;
+
+  const grossMargin = toMoney(
+    D(totals.baseAmount).minus(cogs).minus(transport).minus(brokerCommission)
+  );
+  const grossMarginPct =
+    totals.baseAmount > 0
+      ? toMoney(D(grossMargin).div(totals.baseAmount).mul(100))
+      : 0;
+
+  const { balanceReceivable, status } = computeSaleBalance(
+    totals.totalInclGst,
+    s.amountReceived,
+    linkedPayments
+  );
+
+  return {
+    ...s,
+    productName: product ? productFullName(product) : "",
+    buyerName: buyer?.name ?? "",
+    brokerName: broker?.name ?? null,
+    ...totals,
+    avgCostPerKg,
+    cogs,
+    brokerCommission,
+    grossMargin,
+    grossMarginPct,
+    linkedPayments,
+    balanceReceivable,
+    status,
+  };
+}
+
+// ── Router ──────────────────────────────────────────────────────────────────
 
 export const salesRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const rows = await ctx.db
       .select()
       .from(sales)
-      .where(
-        and(eq(sales.tenantId, ctx.tenantId), isNull(sales.deletedAt))
-      )
+      .where(and(eq(sales.tenantId, ctx.tenantId), isNull(sales.deletedAt)))
       .orderBy(desc(sales.date));
 
-    const result = await Promise.all(
-      rows.map(async (s) => {
-        const product = await ctx.db
-          .select()
-          .from(products)
-          .where(eq(products.id, s.productId))
-          .then((r) => r[0]);
-        const buyer = await ctx.db
-          .select()
-          .from(contacts)
-          .where(eq(contacts.id, s.buyerId))
-          .then((r) => r[0]);
-        const broker = s.brokerId
-          ? await ctx.db
-              .select()
-              .from(contacts)
-              .where(eq(contacts.id, s.brokerId))
-              .then((r) => r[0])
-          : null;
+    if (rows.length === 0) return [];
 
-        // Linked payments
-        const linkedPaymentsResult = await ctx.db
-          .select({
-            total: sql<string>`COALESCE(SUM(${payments.amount}::numeric), 0)`,
-          })
-          .from(payments)
-          .where(
-            and(
-              eq(payments.partyId, s.buyerId),
-              eq(payments.againstTxnId, s.displayId),
-              isNull(payments.deletedAt)
-            )
-          );
-        const linkedPayments = parseFloat(
-          linkedPaymentsResult[0]?.total ?? "0"
-        );
+    // Batch-load all related entities (4 queries instead of 5N)
+    const [productMap, contactMap, linkedMap, avgCostMap] = await Promise.all([
+      loadProductMap(ctx.db, ctx.tenantId, rows.map((r) => r.productId)),
+      loadContactMap(
+        ctx.db,
+        ctx.tenantId,
+        rows.flatMap((r) => [r.buyerId, ...(r.brokerId ? [r.brokerId] : [])])
+      ),
+      loadLinkedPayments(
+        ctx.db,
+        ctx.tenantId,
+        rows.map((r) => r.displayId)
+      ),
+      loadAvgCosts(
+        ctx.db,
+        ctx.tenantId,
+        rows.map((r) => r.productId)
+      ),
+    ]);
 
-        // Avg cost calculation
-        const purchasesForProduct = await ctx.db
-          .select({
-            totalBase: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag} * ${purchases.ratePerKg}::numeric), 0)`,
-            totalKg: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag}), 0)`,
-          })
-          .from(purchases)
-          .where(
-            and(
-              eq(purchases.productId, s.productId),
-              eq(purchases.tenantId, ctx.tenantId),
-              isNull(purchases.deletedAt)
-            )
-          );
-        const purchaseTotalKg = parseFloat(
-          purchasesForProduct[0]?.totalKg ?? "0"
-        );
-        const avgCostPerKg =
-          purchaseTotalKg > 0
-            ? parseFloat(purchasesForProduct[0]?.totalBase ?? "0") /
-              purchaseTotalKg
-            : 0;
-
-        const totalKg = s.qtyBags * s.kgPerBag;
-        const ratePerKg = parseFloat(s.ratePerKg);
-        const gstPct = parseFloat(s.gstPct);
-        const transport = parseFloat(s.transport);
-        const amountReceived = parseFloat(s.amountReceived);
-
-        const baseAmount = totalKg * ratePerKg;
-        const gstAmount = (baseAmount * gstPct) / 100;
-        const totalInclGst = baseAmount + gstAmount;
-        const cogs = avgCostPerKg * totalKg;
-
-        // Broker commission
-        let brokerCommission = 0;
-        if (s.viaBroker && broker) {
-          if (broker.brokerCommissionType === "per_bag") {
-            brokerCommission =
-              s.qtyBags *
-              parseFloat(broker.brokerCommissionValue ?? "0");
-          } else if (broker.brokerCommissionType === "percentage") {
-            brokerCommission =
-              (baseAmount *
-                parseFloat(broker.brokerCommissionValue ?? "0")) /
-              100;
-          }
-        }
-
-        const grossMargin =
-          baseAmount - cogs - transport - brokerCommission;
-        const grossMarginPct =
-          baseAmount > 0 ? (grossMargin / baseAmount) * 100 : 0;
-
-        const balanceReceivable =
-          totalInclGst - amountReceived - linkedPayments;
-        const status =
-          balanceReceivable <= 0
-            ? "Received"
-            : balanceReceivable < totalInclGst
-              ? "Partial"
-              : "Pending";
-
-        const productFullName = product
-          ? `${product.millBrand} ${product.fibreType} ${product.count} ${product.qualityGrade}`
-          : "";
-
-        return {
-          ...s,
-          productName: productFullName,
-          buyerName: buyer?.name ?? "",
-          brokerName: broker?.name ?? null,
-          totalKg,
-          baseAmount,
-          gstAmount,
-          totalInclGst,
-          avgCostPerKg,
-          cogs,
-          brokerCommission,
-          grossMargin,
-          grossMarginPct,
-          linkedPayments,
-          balanceReceivable,
-          status,
-        };
-      })
+    return rows.map((s) =>
+      enrichSale(
+        s,
+        productMap.get(s.productId),
+        contactMap.get(s.buyerId),
+        s.brokerId ? contactMap.get(s.brokerId) : null,
+        linkedMap.get(s.displayId) ?? 0,
+        avgCostMap.get(s.productId) ?? 0
+      )
     );
-
-    return result;
   }),
 
   getById: protectedProcedure
@@ -150,189 +196,101 @@ export const salesRouter = router({
         .where(
           and(eq(sales.id, input.id), eq(sales.tenantId, ctx.tenantId))
         )
-        .then((r) => r[0]);
+        .then((r: any[]) => r[0]);
       if (!s) return null;
 
-      const product = await ctx.db
-        .select()
-        .from(products)
-        .where(eq(products.id, s.productId))
-        .then((r) => r[0]);
-      const buyer = await ctx.db
-        .select()
-        .from(contacts)
-        .where(eq(contacts.id, s.buyerId))
-        .then((r) => r[0]);
-      const broker = s.brokerId
-        ? await ctx.db
-            .select()
-            .from(contacts)
-            .where(eq(contacts.id, s.brokerId))
-            .then((r) => r[0])
-        : null;
+      const [productMap, contactMap, linkedMap, avgCostMap] = await Promise.all([
+        loadProductMap(ctx.db, ctx.tenantId, [s.productId]),
+        loadContactMap(
+          ctx.db,
+          ctx.tenantId,
+          [s.buyerId, ...(s.brokerId ? [s.brokerId] : [])]
+        ),
+        loadLinkedPayments(ctx.db, ctx.tenantId, [s.displayId]),
+        loadAvgCosts(ctx.db, ctx.tenantId, [s.productId]),
+      ]);
 
-      const linkedPaymentsResult = await ctx.db
-        .select({
-          total: sql<string>`COALESCE(SUM(${payments.amount}::numeric), 0)`,
-        })
-        .from(payments)
-        .where(
-          and(
-            eq(payments.partyId, s.buyerId),
-            eq(payments.againstTxnId, s.displayId),
-            isNull(payments.deletedAt)
-          )
-        );
-      const linkedPayments = parseFloat(
-        linkedPaymentsResult[0]?.total ?? "0"
+      return enrichSale(
+        s,
+        productMap.get(s.productId),
+        contactMap.get(s.buyerId),
+        s.brokerId ? contactMap.get(s.brokerId) : null,
+        linkedMap.get(s.displayId) ?? 0,
+        avgCostMap.get(s.productId) ?? 0
       );
-
-      const purchasesForProduct = await ctx.db
-        .select({
-          totalBase: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag} * ${purchases.ratePerKg}::numeric), 0)`,
-          totalKg: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag}), 0)`,
-        })
-        .from(purchases)
-        .where(
-          and(
-            eq(purchases.productId, s.productId),
-            eq(purchases.tenantId, ctx.tenantId),
-            isNull(purchases.deletedAt)
-          )
-        );
-      const purchaseTotalKg = parseFloat(
-        purchasesForProduct[0]?.totalKg ?? "0"
-      );
-      const avgCostPerKg =
-        purchaseTotalKg > 0
-          ? parseFloat(purchasesForProduct[0]?.totalBase ?? "0") /
-            purchaseTotalKg
-          : 0;
-
-      const totalKg = s.qtyBags * s.kgPerBag;
-      const ratePerKg = parseFloat(s.ratePerKg);
-      const gstPct = parseFloat(s.gstPct);
-      const transport = parseFloat(s.transport);
-      const amountReceived = parseFloat(s.amountReceived);
-
-      const baseAmount = totalKg * ratePerKg;
-      const gstAmount = (baseAmount * gstPct) / 100;
-      const totalInclGst = baseAmount + gstAmount;
-      const cogs = avgCostPerKg * totalKg;
-
-      let brokerCommission = 0;
-      if (s.viaBroker && broker) {
-        if (broker.brokerCommissionType === "per_bag") {
-          brokerCommission =
-            s.qtyBags *
-            parseFloat(broker.brokerCommissionValue ?? "0");
-        } else if (broker.brokerCommissionType === "percentage") {
-          brokerCommission =
-            (baseAmount *
-              parseFloat(broker.brokerCommissionValue ?? "0")) /
-            100;
-        }
-      }
-
-      const grossMargin =
-        baseAmount - cogs - transport - brokerCommission;
-      const grossMarginPct =
-        baseAmount > 0 ? (grossMargin / baseAmount) * 100 : 0;
-
-      const balanceReceivable =
-        totalInclGst - amountReceived - linkedPayments;
-      const status =
-        balanceReceivable <= 0
-          ? "Received"
-          : balanceReceivable < totalInclGst
-            ? "Partial"
-            : "Pending";
-
-      const productFullName = product
-        ? `${product.millBrand} ${product.fibreType} ${product.count} ${product.qualityGrade}`
-        : "";
-
-      return {
-        ...s,
-        productName: productFullName,
-        buyerName: buyer?.name ?? "",
-        brokerName: broker?.name ?? null,
-        totalKg,
-        baseAmount,
-        gstAmount,
-        totalInclGst,
-        avgCostPerKg,
-        cogs,
-        brokerCommission,
-        grossMargin,
-        grossMarginPct,
-        linkedPayments,
-        balanceReceivable,
-        status,
-      };
     }),
 
   create: protectedProcedure
     .input(
       z.object({
-        date: z.string(),
+        date: isoDateString,
         productId: z.string().uuid(),
         buyerId: z.string().uuid(),
         viaBroker: z.boolean().default(false),
         brokerId: z.string().uuid().optional(),
         qtyBags: z.number().int().positive(),
         kgPerBag: z.number().int().positive(),
-        ratePerKg: z.string(),
-        gstPct: z.string(),
-        transport: z.string().default("0"),
-        amountReceived: z.string().default("0"),
+        ratePerKg: monetaryString,
+        gstPct: percentageString,
+        transport: monetaryString.default("0"),
+        amountReceived: monetaryString.default("0"),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const lastSale = await ctx.db
-        .select({ displayId: sales.displayId })
-        .from(sales)
-        .where(eq(sales.tenantId, ctx.tenantId))
-        .orderBy(desc(sales.displayId))
-        .limit(1);
+      return await ctx.db.transaction(async (tx: any) => {
+        const lastSale = await tx
+          .select({ displayId: sales.displayId })
+          .from(sales)
+          .where(eq(sales.tenantId, ctx.tenantId))
+          .orderBy(desc(sales.displayId))
+          .limit(1);
 
-      const lastId = lastSale[0]?.displayId ?? null;
-      const nextNum = lastId
-        ? parseInt(lastId.replace("S", ""), 10) + 1
-        : 1;
-      const displayId = `S${String(nextNum).padStart(3, "0")}`;
+        const lastId = lastSale[0]?.displayId ?? null;
+        const nextNum = lastId
+          ? parseInt(lastId.replace("S", ""), 10) + 1
+          : 1;
+        const displayId = `S${String(nextNum).padStart(3, "0")}`;
 
-      const result = await ctx.db
-        .insert(sales)
-        .values({
-          tenantId: ctx.tenantId,
-          displayId,
-          date: input.date,
-          productId: input.productId,
-          buyerId: input.buyerId,
-          viaBroker: input.viaBroker,
-          brokerId: input.viaBroker ? (input.brokerId ?? null) : null,
-          qtyBags: input.qtyBags,
-          kgPerBag: input.kgPerBag,
-          ratePerKg: input.ratePerKg,
-          gstPct: input.gstPct,
-          transport: input.transport,
-          amountReceived: input.amountReceived,
-        })
-        .returning();
+        const result = await tx
+          .insert(sales)
+          .values({
+            tenantId: ctx.tenantId,
+            displayId,
+            date: input.date,
+            productId: input.productId,
+            buyerId: input.buyerId,
+            viaBroker: input.viaBroker,
+            brokerId: input.viaBroker ? (input.brokerId ?? null) : null,
+            qtyBags: input.qtyBags,
+            kgPerBag: input.kgPerBag,
+            ratePerKg: input.ratePerKg,
+            gstPct: input.gstPct,
+            transport: input.transport,
+            amountReceived: input.amountReceived,
+          })
+          .returning();
 
-      return result[0];
+        return result[0];
+      });
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db
+      const result = await ctx.db
         .update(sales)
         .set({ deletedAt: new Date() })
         .where(
           and(eq(sales.id, input.id), eq(sales.tenantId, ctx.tenantId))
-        );
+        )
+        .returning({ id: sales.id });
+
+      if (result.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Sale not found",
+        });
+      }
       return { success: true };
     }),
 });

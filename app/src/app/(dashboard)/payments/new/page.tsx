@@ -37,6 +37,7 @@ const emptyForm: PaymentFormData = {
 export default function NewPaymentPage() {
   const router = useRouter();
   const [form, setForm] = useState<PaymentFormData>(emptyForm);
+  const [viaCC, setViaCC] = useState(true);
   const [displayAmount, setDisplayAmount] = useState("");
   const utils = trpc.useUtils();
 
@@ -62,6 +63,7 @@ export default function NewPaymentPage() {
   const createMutation = trpc.payments.create.useMutation({
     onSuccess: () => {
       utils.payments.list.invalidate();
+      if (viaCC) utils.cc.list.invalidate();
       const partyName = selectedParty?.name ?? "party";
       const parsedAmt = parseIndianAmount(form.amount);
       const formattedAmt = parsedAmt ? formatIndianCurrency(parsedAmt) : form.amount;
@@ -101,6 +103,7 @@ export default function NewPaymentPage() {
       againstTxnId: form.againstTxnId || undefined,
       reference: form.reference || undefined,
       notes: form.notes || undefined,
+      viaCC,
     });
   }
 
@@ -221,6 +224,37 @@ export default function NewPaymentPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Via CC Toggle */}
+          <div className="flex items-center justify-between bg-[#F8F9FA] rounded-xl px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-[#2C3E50]">
+                This payment was via CC account
+              </p>
+              {viaCC && (
+                <p className="text-xs text-[#6C757D] mt-0.5">
+                  Will auto-record CC {form.direction === "Paid" ? "Draw" : "Repay"}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={viaCC}
+              onClick={() => setViaCC(!viaCC)}
+              className={cn(
+                "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                viaCC ? "bg-[#1B4F72]" : "bg-[#DEE2E6]"
+              )}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none inline-block h-6 w-6 rounded-full bg-white shadow-sm transition-transform",
+                  viaCC ? "translate-x-5" : "translate-x-0"
+                )}
+              />
+            </button>
           </div>
 
           {/* Against Txn */}

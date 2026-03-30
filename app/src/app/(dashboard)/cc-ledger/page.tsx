@@ -331,7 +331,16 @@ export default function CCLedgerPage() {
                       {formatIndianCurrency(entry.interest)}
                     </td>
                     <td className="px-4 py-3 text-[#6C757D] truncate max-w-[200px]">
-                      {entry.notes || "-"}
+                      {entry.notes?.startsWith("Auto:") || entry.notes?.startsWith("Auto-reversed:") ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#EBF5FB] text-[#2980B9] border border-[#AED6F1]">
+                            AUTO
+                          </span>
+                          <span className="truncate">{entry.notes.replace(/^Auto:\s*/, "").replace(/^Auto-reversed:\s*/, "")}</span>
+                        </span>
+                      ) : (
+                        entry.notes || "-"
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -382,7 +391,18 @@ export default function CCLedgerPage() {
                   </span>
                 </div>
                 {entry.notes && (
-                  <p className="text-xs text-[#ADB5BD] mt-2">{entry.notes}</p>
+                  <p className="text-xs text-[#ADB5BD] mt-2">
+                    {entry.notes.startsWith("Auto:") || entry.notes.startsWith("Auto-reversed:") ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#EBF5FB] text-[#2980B9] border border-[#AED6F1]">
+                          AUTO
+                        </span>
+                        <span>{entry.notes.replace(/^Auto:\s*/, "").replace(/^Auto-reversed:\s*/, "")}</span>
+                      </span>
+                    ) : (
+                      entry.notes
+                    )}
+                  </p>
                 )}
               </div>
             ))}

@@ -74,37 +74,40 @@ export const configRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      for (const entry of input.entries) {
-        const existing = await ctx.db
-          .select()
-          .from(ccInterestMonthly)
-          .where(
-            and(
-              eq(ccInterestMonthly.tenantId, ctx.tenantId),
-              eq(ccInterestMonthly.financialYear, input.financialYear),
-              eq(ccInterestMonthly.month, entry.month)
+      // Transaction: upsert all 12 months atomically
+      return await ctx.db.transaction(async (tx: any) => {
+        for (const entry of input.entries) {
+          const existing = await tx
+            .select()
+            .from(ccInterestMonthly)
+            .where(
+              and(
+                eq(ccInterestMonthly.tenantId, ctx.tenantId),
+                eq(ccInterestMonthly.financialYear, input.financialYear),
+                eq(ccInterestMonthly.month, entry.month)
+              )
             )
-          )
-          .then((r) => r[0]);
+            .then((r: any[]) => r[0]);
 
-        if (existing) {
-          await ctx.db
-            .update(ccInterestMonthly)
-            .set({
+          if (existing) {
+            await tx
+              .update(ccInterestMonthly)
+              .set({
+                actualInterest: entry.actualInterest,
+                updatedAt: new Date(),
+              })
+              .where(eq(ccInterestMonthly.id, existing.id));
+          } else {
+            await tx.insert(ccInterestMonthly).values({
+              tenantId: ctx.tenantId,
+              financialYear: input.financialYear,
+              month: entry.month,
+              monthIndex: entry.monthIndex,
               actualInterest: entry.actualInterest,
-              updatedAt: new Date(),
-            })
-            .where(eq(ccInterestMonthly.id, existing.id));
-        } else {
-          await ctx.db.insert(ccInterestMonthly).values({
-            tenantId: ctx.tenantId,
-            financialYear: input.financialYear,
-            month: entry.month,
-            monthIndex: entry.monthIndex,
-            actualInterest: entry.actualInterest,
-          });
+            });
+          }
         }
-      }
-      return { success: true };
+        return { success: true };
+      });
     }),
 });

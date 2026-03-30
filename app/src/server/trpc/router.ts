@@ -9,6 +9,8 @@ import { configRouter } from "./routers/config";
 import { ledgerRouter } from "./routers/ledger";
 import { reconRouter } from "./routers/recon";
 import { dashboardRouter } from "./routers/dashboard";
+import { exportRouter } from "./routers/export";
+import { importRouter } from "./routers/import";
 
 export const appRouter = router({
   contacts: contactsRouter,
@@ -21,6 +23,8 @@ export const appRouter = router({
   ledger: ledgerRouter,
   recon: reconRouter,
   dashboard: dashboardRouter,
+  export: exportRouter,
+  import: importRouter,
 });
 
 export type AppRouter = typeof appRouter;
