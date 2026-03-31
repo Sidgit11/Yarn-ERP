@@ -44,12 +44,12 @@ export interface PurchaseTotals {
  */
 export function computePurchaseTotals(row: {
   qtyBags: number;
-  kgPerBag: number;
+  kgPerBag: number | string;
   ratePerKg: string;
   gstPct: string;
   transport: string;
 }): PurchaseTotals {
-  const totalKg = row.qtyBags * row.kgPerBag;
+  const totalKg = row.qtyBags * Number(row.kgPerBag);
   const rate = D(row.ratePerKg);
   const base = rate.mul(totalKg);
   const gst = base.mul(D(row.gstPct)).div(100);
@@ -82,11 +82,11 @@ export interface SaleTotals {
  */
 export function computeSaleTotals(row: {
   qtyBags: number;
-  kgPerBag: number;
+  kgPerBag: number | string;
   ratePerKg: string;
   gstPct: string;
 }): SaleTotals {
-  const totalKg = row.qtyBags * row.kgPerBag;
+  const totalKg = row.qtyBags * Number(row.kgPerBag);
   const rate = D(row.ratePerKg);
   const base = rate.mul(totalKg);
   const gst = base.mul(D(row.gstPct)).div(100);

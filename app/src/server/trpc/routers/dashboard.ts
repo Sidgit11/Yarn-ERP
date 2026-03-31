@@ -177,13 +177,13 @@ export const dashboardRouter = router({
     for (const p of allPurchases) {
       if (!purchasesByProduct[p.productId]) purchasesByProduct[p.productId] = { bags: 0, kg: 0 };
       purchasesByProduct[p.productId].bags += p.qtyBags;
-      purchasesByProduct[p.productId].kg += p.qtyBags * p.kgPerBag;
+      purchasesByProduct[p.productId].kg += p.qtyBags * Number(p.kgPerBag);
     }
     const salesByProduct: Record<string, { bags: number; kg: number }> = {};
     for (const s of allSales) {
       if (!salesByProduct[s.productId]) salesByProduct[s.productId] = { bags: 0, kg: 0 };
       salesByProduct[s.productId].bags += s.qtyBags;
-      salesByProduct[s.productId].kg += s.qtyBags * s.kgPerBag;
+      salesByProduct[s.productId].kg += s.qtyBags * Number(s.kgPerBag);
     }
     const inventory = allProducts.map((prod) => {
       const bought = purchasesByProduct[prod.id] ?? { bags: 0, kg: 0 };

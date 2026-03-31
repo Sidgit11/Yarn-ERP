@@ -56,7 +56,7 @@ async function seedSarthak() {
       tenantId,
       ccLimit: "5000000.00",
       ccInterestRate: "11.00",
-      defaultKgPerBag: 100,
+      defaultKgPerBag: "100",
       defaultGstRate: "5.00",
       overdueDaysThreshold: 30,
     });
@@ -153,7 +153,7 @@ async function seedSarthak() {
       viaBroker: true,
       brokerId: broker.id,
       qtyBags: 20,
-      kgPerBag: 100,
+      kgPerBag: "100",
       ratePerKg: "150.00",
       gstPct: "5.00",
       transport: "300.00", // 20 bags x ₹15
@@ -175,7 +175,7 @@ async function seedSarthak() {
       buyerId: buyer.id,
       viaBroker: false,
       qtyBags: 10,
-      kgPerBag: 100,
+      kgPerBag: "100",
       ratePerKg: "165.00",
       gstPct: "5.00",
       transport: "150.00", // 10 bags x ₹15
@@ -242,7 +242,7 @@ async function seedSarthak() {
       tenantId: siddhant.id,
       ccLimit: "5000000.00",
       ccInterestRate: "11.00",
-      defaultKgPerBag: 100,
+      defaultKgPerBag: "100",
       defaultGstRate: "5.00",
       overdueDaysThreshold: 30,
     });

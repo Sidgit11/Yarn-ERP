@@ -26,7 +26,7 @@ export const configRouter = router({
       z.object({
         ccLimit: z.string(),
         ccInterestRate: z.string(),
-        defaultKgPerBag: z.number().int().positive(),
+        defaultKgPerBag: z.number().positive(),
         defaultGstRate: z.string(),
         overdueDaysThreshold: z.number().int().positive(),
       })
@@ -38,11 +38,16 @@ export const configRouter = router({
         .where(eq(config.tenantId, ctx.tenantId))
         .then((r) => r[0]);
 
+      const values = {
+        ...input,
+        defaultKgPerBag: String(input.defaultKgPerBag),
+      };
+
       if (existing) {
         return ctx.db
           .update(config)
           .set({
-            ...input,
+            ...values,
             updatedAt: new Date(),
           })
           .where(eq(config.id, existing.id))
@@ -53,7 +58,7 @@ export const configRouter = router({
           .insert(config)
           .values({
             tenantId: ctx.tenantId,
-            ...input,
+            ...values,
           })
           .returning()
           .then((r) => r[0]);

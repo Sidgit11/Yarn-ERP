@@ -57,6 +57,7 @@ const productImportSchema = z.object({
 });
 
 const coerceInt = z.union([z.number(), z.string()]).transform((v) => typeof v === "string" ? parseInt(v, 10) : v).pipe(z.number().int().positive());
+const coerceNum = z.union([z.number(), z.string()]).transform((v) => typeof v === "string" ? parseFloat(v) : v).pipe(z.number().positive());
 const coerceMoney = z.union([z.number(), z.string()]).transform((v) => String(v)).pipe(monetaryString);
 const coercePct = z.union([z.number(), z.string()]).transform((v) => String(v)).pipe(percentageString);
 const coerceMoneyDefault0 = z.union([z.number(), z.string(), z.null(), z.undefined()])
@@ -68,7 +69,7 @@ const purchaseImportSchema = z.object({
   supplierName: coerceString.pipe(z.string().min(1, "Supplier name required")),
   productName: coerceString.pipe(z.string().min(1, "Product name required")),
   qtyBags: coerceInt,
-  kgPerBag: coerceInt,
+  kgPerBag: coerceNum,
   ratePerKg: coerceMoney,
   gstPct: coercePct,
   transport: coerceMoneyDefault0,
@@ -80,7 +81,7 @@ const saleImportSchema = z.object({
   buyerName: coerceString.pipe(z.string().min(1, "Buyer name required")),
   productName: coerceString.pipe(z.string().min(1, "Product name required")),
   qtyBags: coerceInt,
-  kgPerBag: coerceInt,
+  kgPerBag: coerceNum,
   ratePerKg: coerceMoney,
   gstPct: coercePct,
   transport: coerceMoneyDefault0,
@@ -255,7 +256,7 @@ export const importRouter = router({
             supplierId: supplier.id,
             viaBroker: false,
             qtyBags: row.qtyBags,
-            kgPerBag: row.kgPerBag,
+            kgPerBag: String(row.kgPerBag),
             ratePerKg: row.ratePerKg,
             gstPct: row.gstPct,
             transport: row.transport,
@@ -322,7 +323,7 @@ export const importRouter = router({
             buyerId: buyer.id,
             viaBroker: false,
             qtyBags: row.qtyBags,
-            kgPerBag: row.kgPerBag,
+            kgPerBag: String(row.kgPerBag),
             ratePerKg: row.ratePerKg,
             gstPct: row.gstPct,
             transport: row.transport,

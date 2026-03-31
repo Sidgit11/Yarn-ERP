@@ -144,7 +144,7 @@ export default function SettingsPage() {
   }, [data]);
 
   function handleSaveConfig() {
-    const kgPerBag = parseInt(configForm.defaultKgPerBag, 10);
+    const kgPerBag = parseFloat(configForm.defaultKgPerBag);
     const overdueDays = parseInt(configForm.overdueDaysThreshold, 10);
     if (isNaN(kgPerBag) || kgPerBag <= 0 || isNaN(overdueDays) || overdueDays <= 0) {
       toast.error("Please enter valid numeric values");
@@ -256,8 +256,8 @@ export default function SettingsPage() {
             </label>
             <input
               type="number"
-              step="1"
-              min="1"
+              step="any"
+              min="0.01"
               value={configForm.defaultKgPerBag}
               onChange={(e) =>
                 setConfigForm({

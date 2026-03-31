@@ -361,9 +361,10 @@ export default function NewPurchasePage() {
             <label className={labelClass}>Kg per Bag</label>
             <input
               type="number"
+              step="any"
               value={kgPerBag}
-              onChange={(e) => setKgPerBag(parseInt(e.target.value, 10) || 100)}
-              min={1}
+              onChange={(e) => setKgPerBag(parseFloat(e.target.value) || 100)}
+              min={0.01}
               className={inputClass}
             />
           </div>
