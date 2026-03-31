@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Pencil } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -138,9 +139,13 @@ export default function PaymentsPage() {
                   <p className="text-xs text-[#ADB5BD] mt-1">{payment.notes}</p>
                 )}
               </div>
+              <div className="flex items-center gap-1 ml-2 shrink-0">
+                <Link href={`/payments/new?edit=${payment.id}`} className="p-2 text-gray-400 hover:text-blue-600 transition-colors min-h-[48px] min-w-[48px] flex items-center justify-center" title="Edit">
+                  <Pencil size={18} />
+                </Link>
               <button
                 onClick={() => setDeleteConfirmId(payment.id)}
-                className="text-[#ADB5BD] hover:text-[#E74C3C] transition-colors p-2 ml-2 shrink-0 min-h-[48px] min-w-[48px] flex items-center justify-center"
+                className="text-[#ADB5BD] hover:text-[#E74C3C] transition-colors p-2 shrink-0 min-h-[48px] min-w-[48px] flex items-center justify-center"
                 title="Delete payment"
               >
                 <svg
@@ -156,6 +161,7 @@ export default function PaymentsPage() {
                   />
                 </svg>
               </button>
+              </div>
             </div>
           </div>
         ))}

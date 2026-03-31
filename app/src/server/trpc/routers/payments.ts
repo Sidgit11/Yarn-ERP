@@ -40,6 +40,31 @@ export const paymentsRouter = router({
     });
   }),
 
+  getById: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const row = await ctx.db
+        .select()
+        .from(payments)
+        .where(
+          and(
+            eq(payments.id, input.id),
+            eq(payments.tenantId, ctx.tenantId),
+            isNull(payments.deletedAt)
+          )
+        )
+        .then((r: any[]) => r[0]);
+
+      if (!row) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Payment not found",
+        });
+      }
+
+      return row;
+    }),
+
   openTransactions: protectedProcedure
     .input(z.object({ partyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -191,6 +216,65 @@ export const paymentsRouter = router({
 
         return payment;
       });
+    }),
+
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        date: isoDateString,
+        partyId: z.string().uuid(),
+        direction: z.enum(["Paid", "Received"]),
+        amount: monetaryString,
+        mode: z.enum(["Cash", "NEFT", "UPI", "Cheque", "RTGS"]),
+        againstTxnId: z.string().optional(),
+        reference: z.string().optional(),
+        notes: z.string().optional(),
+        viaCC: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db
+        .select()
+        .from(payments)
+        .where(
+          and(
+            eq(payments.id, input.id),
+            eq(payments.tenantId, ctx.tenantId),
+            isNull(payments.deletedAt)
+          )
+        )
+        .then((r: any[]) => r[0]);
+
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Payment not found",
+        });
+      }
+
+      const result = await ctx.db
+        .update(payments)
+        .set({
+          date: input.date,
+          partyId: input.partyId,
+          direction: input.direction,
+          amount: input.amount,
+          mode: input.mode,
+          againstTxnId: input.againstTxnId || null,
+          reference: input.reference || null,
+          notes: input.notes || null,
+          viaCC: input.viaCC,
+        })
+        .where(
+          and(
+            eq(payments.id, input.id),
+            eq(payments.tenantId, ctx.tenantId)
+          )
+        )
+        .returning();
+
+      return result[0];
     }),
 
   delete: protectedProcedure

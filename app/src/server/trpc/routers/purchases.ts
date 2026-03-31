@@ -259,6 +259,73 @@ export const purchasesRouter = router({
       });
     }),
 
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        date: isoDateString,
+        productId: z.string().uuid(),
+        lotNo: z.string().optional(),
+        supplierId: z.string().uuid(),
+        viaBroker: z.boolean().default(false),
+        brokerId: z.string().uuid().optional(),
+        qtyBags: z.number().int().positive(),
+        kgPerBag: z.number().positive(),
+        ratePerKg: monetaryString,
+        gstPct: percentageString,
+        transport: monetaryString.default("0"),
+        ccDrawDate: isoDateString.optional(),
+        amountPaid: monetaryString.default("0"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db
+        .select()
+        .from(purchases)
+        .where(
+          and(
+            eq(purchases.id, input.id),
+            eq(purchases.tenantId, ctx.tenantId),
+            isNull(purchases.deletedAt)
+          )
+        )
+        .then((r: any[]) => r[0]);
+
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Purchase not found",
+        });
+      }
+
+      const result = await ctx.db
+        .update(purchases)
+        .set({
+          date: input.date,
+          productId: input.productId,
+          lotNo: input.lotNo || null,
+          supplierId: input.supplierId,
+          viaBroker: input.viaBroker,
+          brokerId: input.viaBroker ? (input.brokerId ?? null) : null,
+          qtyBags: input.qtyBags,
+          kgPerBag: String(input.kgPerBag),
+          ratePerKg: input.ratePerKg,
+          gstPct: input.gstPct,
+          transport: input.transport,
+          ccDrawDate: input.ccDrawDate || null,
+          amountPaid: input.amountPaid,
+        })
+        .where(
+          and(
+            eq(purchases.id, input.id),
+            eq(purchases.tenantId, ctx.tenantId)
+          )
+        )
+        .returning();
+
+      return result[0];
+    }),
+
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {

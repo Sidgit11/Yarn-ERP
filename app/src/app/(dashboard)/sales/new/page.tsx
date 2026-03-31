@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency } from "@/lib/utils";
 import { GST_RATES } from "@/lib/constants";
@@ -10,6 +10,10 @@ import Link from "next/link";
 
 export default function NewSalePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const isEditing = !!editId;
+
   const [showReview, setShowReview] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedData, setSavedData] = useState<{ displayId: string; totalInclGst: number; buyerName: string; grossMargin: number; grossMarginPct: number } | null>(null);
@@ -32,6 +36,29 @@ export default function NewSalePage() {
   const { data: productsList } = trpc.products.list.useQuery();
   const { data: buyers } = trpc.contacts.list.useQuery({ type: "Buyer" });
   const { data: brokers } = trpc.contacts.list.useQuery({ type: "Broker" });
+  // Fetch existing sale for edit mode
+  const { data: existingData } = trpc.sales.getById.useQuery(
+    { id: editId! },
+    { enabled: isEditing }
+  );
+
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (existingData && isEditing) {
+      setDate(existingData.date);
+      setProductId(existingData.productId);
+      setBuyerId(existingData.buyerId);
+      setViaBroker(existingData.viaBroker);
+      setBrokerId(existingData.brokerId || "");
+      setQtyBags(existingData.qtyBags);
+      setKgPerBag(Number(existingData.kgPerBag));
+      setRatePerKg(parseFloat(existingData.ratePerKg));
+      setGstPct(existingData.gstPct);
+      setTransport(parseFloat(existingData.transport));
+      setAmountReceived(parseFloat(existingData.amountReceived));
+    }
+  }, [existingData, isEditing]);
+
   const { data: avgCostPerKg } = trpc.purchases.avgCostByProduct.useQuery(
     { productId },
     { enabled: !!productId }
@@ -60,6 +87,16 @@ export default function NewSalePage() {
     },
     onError: (err) => {
       toast.error(`Couldn't save. Your data is safe — try again. ${err.message}`);
+    },
+  });
+
+  const updateSale = trpc.sales.update.useMutation({
+    onSuccess: () => {
+      toast.success("Sale updated successfully");
+      router.push("/sales");
+    },
+    onError: (err) => {
+      toast.error(`Couldn't update. ${err.message}`);
     },
   });
 
@@ -115,7 +152,7 @@ export default function NewSalePage() {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    createSale.mutate({
+    const fields = {
       date,
       productId,
       buyerId,
@@ -127,11 +164,16 @@ export default function NewSalePage() {
       gstPct,
       transport: String(typeof transport === "number" ? transport : 0),
       amountReceived: String(typeof amountReceived === "number" ? amountReceived : 0),
-    });
+    };
+    if (isEditing) {
+      updateSale.mutate({ id: editId!, ...fields });
+    } else {
+      createSale.mutate(fields);
+    }
   };
 
-  // Post-save quick actions
-  if (saved && savedData) {
+  // Post-save quick actions (skip for edit mode — redirect handled by updateSale onSuccess)
+  if (!isEditing && saved && savedData) {
     return (
       <div className="max-w-lg mx-auto">
         <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-6 text-center space-y-6">
@@ -282,10 +324,10 @@ export default function NewSalePage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={createSale.isPending}
+              disabled={createSale.isPending || updateSale.isPending}
               className="flex-1 min-h-[48px] px-4 py-3 bg-[#27AE60] text-white rounded-xl font-semibold text-base hover:bg-[#229954] transition-colors disabled:opacity-50"
             >
-              {createSale.isPending ? "Saving..." : "Confirm \u2713"}
+              {(createSale.isPending || updateSale.isPending) ? "Saving..." : isEditing ? "Save Changes" : "Confirm \u2713"}
             </button>
           </div>
         </div>
@@ -298,7 +340,7 @@ export default function NewSalePage() {
 
   return (
     <div className="max-w-lg mx-auto">
-      <h1 className="text-2xl font-bold text-[#1B4F72] mb-6">New Sale</h1>
+      <h1 className="text-2xl font-bold text-[#1B4F72] mb-6">{isEditing ? "Edit Sale" : "New Sale"}</h1>
 
       <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-6 space-y-5">
         {/* Date */}

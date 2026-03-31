@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
 import { ccEntries, config, ccInterestMonthly } from "../../db/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc } from "drizzle-orm";
 import {
   computeCcInterest,
   monetaryString,
@@ -120,6 +120,85 @@ export const ccRouter = router({
           .returning();
 
         return result[0];
+      });
+    }),
+
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        date: isoDateString,
+        event: z.enum(["Draw", "Repay"]),
+        amount: monetaryString,
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.db.transaction(async (tx: any) => {
+        // Verify entry exists and belongs to tenant
+        const existing = await tx
+          .select()
+          .from(ccEntries)
+          .where(
+            and(
+              eq(ccEntries.id, input.id),
+              eq(ccEntries.tenantId, ctx.tenantId)
+            )
+          )
+          .then((r: any[]) => r[0]);
+
+        if (!existing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "CC entry not found",
+          });
+        }
+
+        // Update the entry itself
+        await tx
+          .update(ccEntries)
+          .set({
+            date: input.date,
+            event: input.event,
+            amount: input.amount,
+            notes: input.notes || null,
+          })
+          .where(
+            and(
+              eq(ccEntries.id, input.id),
+              eq(ccEntries.tenantId, ctx.tenantId)
+            )
+          );
+
+        // Recalculate running balances for ALL entries (date/createdAt order)
+        const allEntries = await tx
+          .select()
+          .from(ccEntries)
+          .where(eq(ccEntries.tenantId, ctx.tenantId))
+          .orderBy(asc(ccEntries.date), asc(ccEntries.createdAt));
+
+        let balance = D("0");
+        for (const entry of allEntries) {
+          const amt = D(entry.amount);
+          balance =
+            entry.event === "Draw"
+              ? balance.plus(amt)
+              : balance.minus(amt);
+
+          await tx
+            .update(ccEntries)
+            .set({ runningBalance: balance.toFixed(2) })
+            .where(eq(ccEntries.id, entry.id));
+        }
+
+        // Return the updated entry
+        const updated = await tx
+          .select()
+          .from(ccEntries)
+          .where(eq(ccEntries.id, input.id))
+          .then((r: any[]) => r[0]);
+
+        return updated;
       });
     }),
 });

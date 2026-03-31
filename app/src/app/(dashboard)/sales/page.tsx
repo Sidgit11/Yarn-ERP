@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Pencil } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
 
@@ -90,9 +91,14 @@ export default function SalesPage() {
                     {s.productName}
                   </span>
                 </div>
-                <span className="text-sm text-[#6C757D] shrink-0 ml-2">
-                  {formatDate(s.date)}
-                </span>
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                  <span className="text-sm text-[#6C757D]">
+                    {formatDate(s.date)}
+                  </span>
+                  <Link href={`/sales/new?edit=${s.id}`} className="p-2 text-gray-400 hover:text-blue-600 transition-colors" title="Edit">
+                    <Pencil size={15} />
+                  </Link>
+                </div>
               </div>
 
               {/* Row 2: buyer, bags, rate */}

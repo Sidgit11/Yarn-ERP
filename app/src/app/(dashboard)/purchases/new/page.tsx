@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency } from "@/lib/utils";
 import { GST_RATES } from "@/lib/constants";
@@ -10,6 +10,10 @@ import Link from "next/link";
 
 export default function NewPurchasePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const isEditing = !!editId;
+
   const [showReview, setShowReview] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedData, setSavedData] = useState<{ displayId: string; grandTotal: number; supplierName: string } | null>(null);
@@ -29,6 +33,30 @@ export default function NewPurchasePage() {
   const [amountPaid, setAmountPaid] = useState<number | "">("");
   const [notes, setNotes] = useState("");
 
+  // Fetch existing purchase for edit mode
+  const { data: existingPurchase } = trpc.purchases.getById.useQuery(
+    { id: editId! },
+    { enabled: isEditing }
+  );
+
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (existingPurchase && isEditing) {
+      setDate(existingPurchase.date);
+      setProductId(existingPurchase.productId);
+      setLotNo(existingPurchase.lotNo || "");
+      setSupplierId(existingPurchase.supplierId);
+      setViaBroker(existingPurchase.viaBroker);
+      setBrokerId(existingPurchase.brokerId || "");
+      setQtyBags(existingPurchase.qtyBags);
+      setKgPerBag(Number(existingPurchase.kgPerBag));
+      setRatePerKg(parseFloat(existingPurchase.ratePerKg));
+      setGstPct(existingPurchase.gstPct);
+      setTransport(parseFloat(existingPurchase.transport));
+      setAmountPaid(parseFloat(existingPurchase.amountPaid));
+    }
+  }, [existingPurchase, isEditing]);
+
   // Queries
   const { data: productsList } = trpc.products.list.useQuery();
   const { data: suppliers } = trpc.contacts.list.useQuery({ type: "Mill" });
@@ -47,7 +75,7 @@ export default function NewPurchasePage() {
     }
   }, [selectedProduct, suppliers, supplierId]);
 
-  // Mutation
+  // Mutations
   const createPurchase = trpc.purchases.create.useMutation({
     onSuccess: (data) => {
       const supplierName = selectedSupplier?.name ?? "Supplier";
@@ -61,6 +89,16 @@ export default function NewPurchasePage() {
     },
     onError: (err) => {
       toast.error(`Couldn't save. Your data is safe — try again. ${err.message}`);
+    },
+  });
+
+  const updatePurchase = trpc.purchases.update.useMutation({
+    onSuccess: () => {
+      toast.success("Purchase updated successfully");
+      router.push("/purchases");
+    },
+    onError: (err) => {
+      toast.error(`Couldn't update. ${err.message}`);
     },
   });
 
@@ -90,7 +128,7 @@ export default function NewPurchasePage() {
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    createPurchase.mutate({
+    const payload = {
       date,
       productId,
       lotNo: lotNo || undefined,
@@ -103,11 +141,16 @@ export default function NewPurchasePage() {
       gstPct,
       transport: String(typeof transport === "number" ? transport : 0),
       amountPaid: String(typeof amountPaid === "number" ? amountPaid : 0),
-    });
+    };
+    if (isEditing && editId) {
+      updatePurchase.mutate({ id: editId, ...payload });
+    } else {
+      createPurchase.mutate(payload);
+    }
   };
 
-  // Post-save quick actions
-  if (saved && savedData) {
+  // Post-save quick actions (only for create mode; edit mode redirects automatically)
+  if (!isEditing && saved && savedData) {
     return (
       <div className="max-w-lg mx-auto">
         <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-6 text-center space-y-6">
@@ -231,10 +274,10 @@ export default function NewPurchasePage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={createPurchase.isPending}
+              disabled={updatePurchase.isPending || createPurchase.isPending}
               className="flex-1 min-h-[48px] px-4 py-3 bg-[#27AE60] text-white rounded-xl font-semibold text-base hover:bg-[#229954] transition-colors disabled:opacity-50"
             >
-              {createPurchase.isPending ? "Saving..." : "Confirm \u2713"}
+              {(updatePurchase.isPending || createPurchase.isPending) ? "Saving..." : isEditing ? "Save Changes" : "Confirm \u2713"}
             </button>
           </div>
         </div>
@@ -247,7 +290,7 @@ export default function NewPurchasePage() {
 
   return (
     <div className="max-w-lg mx-auto">
-      <h1 className="text-2xl font-bold text-[#1B4F72] mb-6">New Purchase</h1>
+      <h1 className="text-2xl font-bold text-[#1B4F72] mb-6">{isEditing ? "Edit Purchase" : "New Purchase"}</h1>
 
       <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-6 space-y-5">
         {/* Date */}
@@ -509,11 +552,11 @@ export default function NewPurchasePage() {
           </button>
           <button
             type="button"
-            onClick={() => setShowReview(true)}
-            disabled={!canSubmit}
+            onClick={() => isEditing ? handleSubmit() : setShowReview(true)}
+            disabled={!canSubmit || updatePurchase.isPending}
             className="flex-1 min-h-[48px] px-4 py-3 bg-[#1B4F72] text-white rounded-xl font-semibold text-base hover:bg-[#154360] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Review & Save
+            {updatePurchase.isPending ? "Saving..." : isEditing ? "Save Changes" : "Review & Save"}
           </button>
         </div>
       </div>

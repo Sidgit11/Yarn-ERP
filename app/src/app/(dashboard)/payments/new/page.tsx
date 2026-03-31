@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn, parseIndianAmount, formatIndianCurrency } from "@/lib/utils";
 import { PAYMENT_MODES } from "@/lib/constants";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 type Direction = "Paid" | "Received";
@@ -36,11 +36,38 @@ const emptyForm: PaymentFormData = {
 
 export default function NewPaymentPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const isEditing = !!editId;
+
   const [form, setForm] = useState<PaymentFormData>(emptyForm);
   const [viaCC, setViaCC] = useState(true);
   const [displayAmount, setDisplayAmount] = useState("");
   const [showReview, setShowReview] = useState(false);
   const utils = trpc.useUtils();
+
+  const { data: existingPayment } = trpc.payments.getById.useQuery(
+    { id: editId! },
+    { enabled: isEditing }
+  );
+
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (existingPayment) {
+      setForm({
+        date: existingPayment.date,
+        partyId: existingPayment.partyId,
+        direction: existingPayment.direction as Direction,
+        amount: existingPayment.amount,
+        mode: existingPayment.mode as PaymentMode,
+        againstTxnId: existingPayment.againstTxnId ?? "",
+        reference: existingPayment.reference ?? "",
+        notes: existingPayment.notes ?? "",
+      });
+      setDisplayAmount(existingPayment.amount);
+      setViaCC(existingPayment.viaCC ?? false);
+    }
+  }, [existingPayment]);
 
   const { data: contactsList } = trpc.contacts.list.useQuery();
 
@@ -79,6 +106,17 @@ export default function NewPaymentPage() {
     },
   });
 
+  const updateMutation = trpc.payments.update.useMutation({
+    onSuccess: () => {
+      utils.payments.list.invalidate();
+      toast.success("Payment updated successfully");
+      router.push("/payments");
+    },
+    onError: (err) => {
+      toast.error(err.message || "Couldn't update.");
+    },
+  });
+
   // Forgiving amount input: accept "5L", "10K" etc.
   function handleAmountChange(rawValue: string) {
     setDisplayAmount(rawValue);
@@ -95,7 +133,7 @@ export default function NewPaymentPage() {
       toast.error("Please fill in all required fields");
       return;
     }
-    createMutation.mutate({
+    const payload = {
       date: form.date,
       partyId: form.partyId,
       direction: form.direction,
@@ -105,7 +143,12 @@ export default function NewPaymentPage() {
       reference: form.reference || undefined,
       notes: form.notes || undefined,
       viaCC,
-    });
+    };
+    if (isEditing) {
+      updateMutation.mutate({ id: editId!, ...payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   }
 
   const canSave = form.partyId && form.amount && parseFloat(form.amount) > 0;
@@ -196,10 +239,14 @@ export default function NewPaymentPage() {
             <button
               type="button"
               onClick={handleSave}
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || updateMutation.isPending}
               className="flex-1 min-h-[48px] px-4 py-3 bg-[#27AE60] text-white rounded-xl font-semibold text-base hover:bg-[#229954] transition-colors disabled:opacity-50"
             >
-              {createMutation.isPending ? "Saving..." : "Confirm \u2713"}
+              {(createMutation.isPending || updateMutation.isPending)
+                ? "Saving..."
+                : isEditing
+                  ? "Save Changes"
+                  : "Confirm \u2713"}
             </button>
           </div>
         </div>
@@ -210,7 +257,7 @@ export default function NewPaymentPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-[#1B4F72]">Record Payment</h1>
+        <h1 className="text-2xl font-bold text-[#1B4F72]">{isEditing ? "Edit Payment" : "Record Payment"}</h1>
         <button
           onClick={() => router.push("/payments")}
           className="text-sm text-[#6C757D] hover:text-[#2C3E50] transition-colors min-h-[48px] min-w-[48px] flex items-center justify-center"
