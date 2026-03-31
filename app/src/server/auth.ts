@@ -18,11 +18,15 @@ export const authOptions: NextAuthOptions = {
 
         const login = credentials.login.trim().toLowerCase();
 
-        const user = await db.query.users.findFirst({
-          where: login.includes("@")
-            ? eq(users.email, login)
-            : eq(users.phone, login),
+        // Try email first, then phone
+        let user = await db.query.users.findFirst({
+          where: eq(users.email, login),
         });
+        if (!user) {
+          user = await db.query.users.findFirst({
+            where: eq(users.phone, login),
+          });
+        }
 
         if (!user) return null;
 
