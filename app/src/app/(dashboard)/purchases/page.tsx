@@ -1,12 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function PurchasesPage() {
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const utils = trpc.useUtils();
   const { data: purchasesList, isLoading } = trpc.purchases.list.useQuery();
+
+  const deleteMutation = trpc.purchases.delete.useMutation({
+    onSuccess: () => {
+      utils.purchases.list.invalidate();
+      setDeleteConfirmId(null);
+      toast.success("Purchase deleted");
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to delete purchase");
+    },
+  });
 
   const statusBadge = (status: string) => {
     const config =
@@ -90,9 +105,12 @@ export default function PurchasesPage() {
                   <span className="text-sm text-[#6C757D]">
                     {formatDate(p.date)}
                   </span>
-                  <Link href={`/purchases/new?edit=${p.id}`} className="p-2 text-gray-400 hover:text-blue-600 transition-colors" title="Edit">
+                  <Link href={`/purchases/new?edit=${p.id}`} className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Edit">
                     <Pencil size={15} />
                   </Link>
+                  <button onClick={() => setDeleteConfirmId(p.id)} className="p-1.5 text-gray-400 hover:text-[#E74C3C] transition-colors" title="Delete">
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
 
@@ -126,6 +144,40 @@ export default function PurchasesPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-lg">
+            <h3 className="text-lg font-semibold text-[#2C3E50] mb-2">
+              Delete Purchase
+            </h3>
+            <p className="text-[#6C757D] mb-3">
+              Are you sure you want to delete this purchase?
+            </p>
+            <div className="bg-[#FEF9E7] border border-[#F1C40F] rounded-xl px-4 py-3 mb-6">
+              <p className="text-sm text-[#7D6608] font-medium">
+                This will affect inventory, margins, and supplier balances. Linked payments will remain but won't be tied to this purchase. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="min-h-[48px] px-4 py-3 text-base font-semibold text-[#6C757D] bg-[#F8F9FA] rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate({ id: deleteConfirmId })}
+                disabled={deleteMutation.isPending}
+                className="min-h-[48px] px-4 py-3 text-base font-semibold text-white bg-[#E74C3C] rounded-xl hover:bg-[#C0392B] transition-colors disabled:opacity-50"
+              >
+                {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

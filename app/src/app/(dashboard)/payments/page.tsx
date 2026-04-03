@@ -174,10 +174,14 @@ export default function PaymentsPage() {
             <h3 className="text-lg font-semibold text-[#2C3E50] mb-2">
               Delete Payment
             </h3>
-            <p className="text-[#6C757D] mb-6">
-              Are you sure you want to delete this payment? This action cannot
-              be undone.
+            <p className="text-[#6C757D] mb-3">
+              Are you sure you want to delete this payment?
             </p>
+            <div className="bg-[#FEF9E7] border border-[#F1C40F] rounded-xl px-4 py-3 mb-6">
+              <p className="text-sm text-[#7D6608] font-medium">
+                This will affect the linked party balance and cannot be undone.
+              </p>
+            </div>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteConfirmId(null)}

@@ -201,4 +201,61 @@ export const ccRouter = router({
         return updated;
       });
     }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.db.transaction(async (tx: any) => {
+        const existing = await tx
+          .select()
+          .from(ccEntries)
+          .where(
+            and(
+              eq(ccEntries.id, input.id),
+              eq(ccEntries.tenantId, ctx.tenantId)
+            )
+          )
+          .then((r: any[]) => r[0]);
+
+        if (!existing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "CC entry not found",
+          });
+        }
+
+        // Delete the entry
+        await tx
+          .delete(ccEntries)
+          .where(
+            and(
+              eq(ccEntries.id, input.id),
+              eq(ccEntries.tenantId, ctx.tenantId)
+            )
+          );
+
+        // Recalculate running balances for remaining entries
+        const allEntries = await tx
+          .select()
+          .from(ccEntries)
+          .where(eq(ccEntries.tenantId, ctx.tenantId))
+          .orderBy(asc(ccEntries.date), asc(ccEntries.createdAt));
+
+        let balance = D("0");
+        for (const entry of allEntries) {
+          const amt = D(entry.amount);
+          balance =
+            entry.event === "Draw"
+              ? balance.plus(amt)
+              : balance.minus(amt);
+
+          await tx
+            .update(ccEntries)
+            .set({ runningBalance: balance.toFixed(2) })
+            .where(eq(ccEntries.id, entry.id));
+        }
+
+        return { success: true };
+      });
+    }),
 });
