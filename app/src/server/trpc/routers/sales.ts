@@ -228,12 +228,14 @@ export const salesRouter = router({
         buyerId: z.string().uuid(),
         viaBroker: z.boolean().default(false),
         brokerId: z.string().uuid().optional(),
+        transporterId: z.string().uuid().optional(),
         qtyBags: z.number().int().positive(),
         kgPerBag: z.number().positive(),
         ratePerKg: monetaryString,
         gstPct: percentageString,
         transport: monetaryString.default("0"),
         amountReceived: monetaryString.default("0"),
+        ourInvoiceNo: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -261,12 +263,14 @@ export const salesRouter = router({
             buyerId: input.buyerId,
             viaBroker: input.viaBroker,
             brokerId: input.viaBroker ? (input.brokerId ?? null) : null,
+            transporterId: input.transporterId || null,
             qtyBags: input.qtyBags,
             kgPerBag: String(input.kgPerBag),
             ratePerKg: input.ratePerKg,
             gstPct: input.gstPct,
             transport: input.transport,
             amountReceived: input.amountReceived,
+            ourInvoiceNo: input.ourInvoiceNo || null,
           })
           .returning();
 
@@ -283,12 +287,14 @@ export const salesRouter = router({
         buyerId: z.string().uuid(),
         viaBroker: z.boolean().default(false),
         brokerId: z.string().uuid().optional(),
+        transporterId: z.string().uuid().optional(),
         qtyBags: z.number().int().positive(),
         kgPerBag: z.number().positive(),
         ratePerKg: monetaryString,
         gstPct: percentageString,
         transport: monetaryString.default("0"),
         amountReceived: monetaryString.default("0"),
+        ourInvoiceNo: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -319,12 +325,14 @@ export const salesRouter = router({
           buyerId: input.buyerId,
           viaBroker: input.viaBroker,
           brokerId: input.viaBroker ? (input.brokerId ?? null) : null,
+          transporterId: input.transporterId || null,
           qtyBags: input.qtyBags,
           kgPerBag: String(input.kgPerBag),
           ratePerKg: input.ratePerKg,
           gstPct: input.gstPct,
           transport: input.transport,
           amountReceived: input.amountReceived,
+          ourInvoiceNo: input.ourInvoiceNo || null,
         })
         .where(
           and(eq(sales.id, input.id), eq(sales.tenantId, ctx.tenantId))

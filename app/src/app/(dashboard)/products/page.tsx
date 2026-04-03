@@ -13,6 +13,8 @@ interface ProductFormData {
   fibreType: FibreType;
   count: string;
   qualityGrade: QualityGrade;
+  hsnCode: string;
+  colorShade: string;
 }
 
 const emptyForm: ProductFormData = {
@@ -20,6 +22,8 @@ const emptyForm: ProductFormData = {
   fibreType: "PC",
   count: "",
   qualityGrade: "Standard",
+  hsnCode: "",
+  colorShade: "",
 };
 
 export default function ProductsPage() {
@@ -77,6 +81,8 @@ export default function ProductsPage() {
       fibreType: product.fibreType,
       count: product.count,
       qualityGrade: product.qualityGrade,
+      hsnCode: product.hsnCode ?? "",
+      colorShade: product.colorShade ?? "",
     });
     setModalOpen(true);
   }
@@ -93,6 +99,8 @@ export default function ProductsPage() {
       fibreType: form.fibreType,
       count: form.count,
       qualityGrade: form.qualityGrade,
+      hsnCode: form.hsnCode || undefined,
+      colorShade: form.colorShade || undefined,
     };
 
     if (editingId) {
@@ -200,6 +208,12 @@ export default function ProductsPage() {
                     {product.active ? "Active" : "Inactive"}
                   </span>
                 </div>
+                {(product.hsnCode || product.colorShade) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#6C757D]">
+                    {product.hsnCode && <span>HSN: {product.hsnCode}</span>}
+                    {product.colorShade && <span>{product.colorShade}</span>}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2 ml-2">
                 <button
@@ -341,6 +355,34 @@ export default function ProductsPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* HSN Code */}
+                <div>
+                  <label className="block text-sm font-medium text-[#2C3E50] mb-1.5">
+                    HSN Code <span className="text-[#ADB5BD] font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.hsnCode}
+                    onChange={(e) => setForm({ ...form, hsnCode: e.target.value })}
+                    className="w-full px-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
+                    placeholder="e.g. 5509"
+                  />
+                </div>
+
+                {/* Color/Shade */}
+                <div>
+                  <label className="block text-sm font-medium text-[#2C3E50] mb-1.5">
+                    Color/Shade <span className="text-[#ADB5BD] font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.colorShade}
+                    onChange={(e) => setForm({ ...form, colorShade: e.target.value })}
+                    className="w-full px-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
+                    placeholder="e.g. White, RFD, Melange Grey"
+                  />
                 </div>
 
                 {/* Full Name Preview */}

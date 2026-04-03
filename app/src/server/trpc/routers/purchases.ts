@@ -209,6 +209,7 @@ export const purchasesRouter = router({
         supplierId: z.string().uuid(),
         viaBroker: z.boolean().default(false),
         brokerId: z.string().uuid().optional(),
+        transporterId: z.string().uuid().optional(),
         qtyBags: z.number().int().positive(),
         kgPerBag: z.number().positive(),
         ratePerKg: monetaryString,
@@ -216,6 +217,7 @@ export const purchasesRouter = router({
         transport: monetaryString.default("0"),
         ccDrawDate: isoDateString.optional(),
         amountPaid: monetaryString.default("0"),
+        supplierInvoiceNo: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -245,6 +247,7 @@ export const purchasesRouter = router({
             supplierId: input.supplierId,
             viaBroker: input.viaBroker,
             brokerId: input.viaBroker ? (input.brokerId ?? null) : null,
+            transporterId: input.transporterId || null,
             qtyBags: input.qtyBags,
             kgPerBag: String(input.kgPerBag),
             ratePerKg: input.ratePerKg,
@@ -252,6 +255,7 @@ export const purchasesRouter = router({
             transport: input.transport,
             ccDrawDate: input.ccDrawDate || null,
             amountPaid: input.amountPaid,
+            supplierInvoiceNo: input.supplierInvoiceNo || null,
           })
           .returning();
 
@@ -269,6 +273,7 @@ export const purchasesRouter = router({
         supplierId: z.string().uuid(),
         viaBroker: z.boolean().default(false),
         brokerId: z.string().uuid().optional(),
+        transporterId: z.string().uuid().optional(),
         qtyBags: z.number().int().positive(),
         kgPerBag: z.number().positive(),
         ratePerKg: monetaryString,
@@ -276,6 +281,7 @@ export const purchasesRouter = router({
         transport: monetaryString.default("0"),
         ccDrawDate: isoDateString.optional(),
         amountPaid: monetaryString.default("0"),
+        supplierInvoiceNo: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -307,6 +313,7 @@ export const purchasesRouter = router({
           supplierId: input.supplierId,
           viaBroker: input.viaBroker,
           brokerId: input.viaBroker ? (input.brokerId ?? null) : null,
+          transporterId: input.transporterId || null,
           qtyBags: input.qtyBags,
           kgPerBag: String(input.kgPerBag),
           ratePerKg: input.ratePerKg,
@@ -314,6 +321,7 @@ export const purchasesRouter = router({
           transport: input.transport,
           ccDrawDate: input.ccDrawDate || null,
           amountPaid: input.amountPaid,
+          supplierInvoiceNo: input.supplierInvoiceNo || null,
         })
         .where(
           and(

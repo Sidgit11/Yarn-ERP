@@ -20,6 +20,8 @@ interface ContactFormData {
   type: ContactType;
   phone: string;
   city: string;
+  gstin: string;
+  email: string;
   brokerCommissionType: "per_bag" | "percentage";
   brokerCommissionValue: string;
   transporterRatePerBag: string;
@@ -31,6 +33,8 @@ const emptyForm: ContactFormData = {
   type: "Mill",
   phone: "",
   city: "",
+  gstin: "",
+  email: "",
   brokerCommissionType: "per_bag",
   brokerCommissionValue: "",
   transporterRatePerBag: "",
@@ -90,6 +94,8 @@ export default function ContactsPage() {
       type: contact.type,
       phone: contact.phone ?? "",
       city: contact.city ?? "",
+      gstin: contact.gstin ?? "",
+      email: contact.email ?? "",
       brokerCommissionType: contact.brokerCommissionType ?? "per_bag",
       brokerCommissionValue: contact.brokerCommissionValue ?? "",
       transporterRatePerBag: contact.transporterRatePerBag ?? "",
@@ -123,6 +129,8 @@ export default function ContactsPage() {
       type: form.type,
       phone: form.phone || undefined,
       city: form.city || undefined,
+      gstin: form.gstin || undefined,
+      email: form.email || undefined,
       brokerCommissionType: form.type === "Broker" ? form.brokerCommissionType : undefined,
       brokerCommissionValue: form.type === "Broker" && form.brokerCommissionValue ? form.brokerCommissionValue : undefined,
       transporterRatePerBag: form.type === "Transporter" && form.transporterRatePerBag ? form.transporterRatePerBag : undefined,
@@ -389,6 +397,34 @@ export default function ContactsPage() {
                     onChange={(e) => setForm({ ...form, city: e.target.value })}
                     className="w-full px-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
                     placeholder="City"
+                  />
+                </div>
+
+                {/* GSTIN */}
+                <div>
+                  <label className="block text-sm font-medium text-[#2C3E50] mb-1.5">
+                    GSTIN <span className="text-[#ADB5BD] font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.gstin}
+                    onChange={(e) => setForm({ ...form, gstin: e.target.value })}
+                    className="w-full px-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
+                    placeholder="e.g. 22AAAAA0000A1Z5"
+                  />
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-sm font-medium text-[#2C3E50] mb-1.5">
+                    Email <span className="text-[#ADB5BD] font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    className="w-full px-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
+                    placeholder="contact@example.com"
                   />
                 </div>
 

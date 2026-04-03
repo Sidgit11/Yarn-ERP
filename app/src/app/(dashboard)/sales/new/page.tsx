@@ -30,12 +30,16 @@ export default function NewSalePage() {
   const [gstPct, setGstPct] = useState("5");
   const [transport, setTransport] = useState<number | "">("");
   const [amountReceived, setAmountReceived] = useState<number | "">("");
+  const [ourInvoiceNo, setOurInvoiceNo] = useState("");
   const [notes, setNotes] = useState("");
+  const [transporterId, setTransporterId] = useState("");
+  const [transportOverridden, setTransportOverridden] = useState(false);
 
   // Queries
   const { data: productsList } = trpc.products.list.useQuery();
   const { data: buyers } = trpc.contacts.list.useQuery({ type: "Buyer" });
   const { data: brokers } = trpc.contacts.list.useQuery({ type: "Broker" });
+  const { data: transporters } = trpc.contacts.list.useQuery({ type: "Transporter" });
   // Fetch existing sale for edit mode
   const { data: existingData } = trpc.sales.getById.useQuery(
     { id: editId! },
@@ -56,6 +60,11 @@ export default function NewSalePage() {
       setGstPct(existingData.gstPct);
       setTransport(parseFloat(existingData.transport));
       setAmountReceived(parseFloat(existingData.amountReceived));
+      setTransporterId(existingData.transporterId || "");
+      setOurInvoiceNo(existingData.ourInvoiceNo || "");
+      if (existingData.transporterId) {
+        setTransportOverridden(true); // preserve user's saved transport value in edit mode
+      }
     }
   }, [existingData, isEditing]);
 
@@ -66,6 +75,22 @@ export default function NewSalePage() {
 
   // Get selected broker details for commission calculation
   const selectedBroker = brokers?.find((b) => b.id === brokerId);
+
+  // Get selected transporter for rate auto-fill
+  const selectedTransporter = transporters?.find((t) => t.id === transporterId);
+
+  // Auto-calculate transport when transporter or qtyBags changes
+  useEffect(() => {
+    if (transportOverridden) return;
+    if (selectedTransporter && selectedTransporter.transporterRatePerBag && typeof qtyBags === "number" && qtyBags > 0) {
+      const rate = parseFloat(selectedTransporter.transporterRatePerBag);
+      if (!isNaN(rate)) {
+        setTransport(qtyBags * rate);
+      }
+    } else if (!transporterId) {
+      // Only clear if no transporter selected and user hasn't manually typed
+    }
+  }, [transporterId, qtyBags, selectedTransporter, transportOverridden]);
 
   // Mutation
   const createSale = trpc.sales.create.useMutation({
@@ -164,6 +189,8 @@ export default function NewSalePage() {
       gstPct,
       transport: String(typeof transport === "number" ? transport : 0),
       amountReceived: String(typeof amountReceived === "number" ? amountReceived : 0),
+      transporterId: transporterId || undefined,
+      ourInvoiceNo: ourInvoiceNo || undefined,
     };
     if (isEditing) {
       updateSale.mutate({ id: editId!, ...fields });
@@ -423,6 +450,28 @@ export default function NewSalePage() {
           </div>
         )}
 
+        {/* Transporter */}
+        <div>
+          <label className={labelClass}>
+            Transporter <span className="text-[#ADB5BD] font-normal">(optional)</span>
+          </label>
+          <select
+            value={transporterId}
+            onChange={(e) => {
+              setTransporterId(e.target.value);
+              setTransportOverridden(false);
+            }}
+            className={inputClass}
+          >
+            <option value="">No transporter</option>
+            {transporters?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Qty and Kg per Bag */}
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -508,7 +557,8 @@ export default function NewSalePage() {
         {/* Transport */}
         <div>
           <label className={labelClass}>
-            Transport <span className="text-[#ADB5BD] font-normal">(optional)</span>
+            Transport{selectedTransporter?.transporterRatePerBag ? ` (@ Rs${selectedTransporter.transporterRatePerBag}/bag)` : ""}{" "}
+            <span className="text-[#ADB5BD] font-normal">(optional)</span>
           </label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6C757D] text-base font-medium">
@@ -517,7 +567,10 @@ export default function NewSalePage() {
             <input
               type="number"
               value={transport}
-              onChange={(e) => setTransport(e.target.value ? parseFloat(e.target.value) : "")}
+              onChange={(e) => {
+                setTransport(e.target.value ? parseFloat(e.target.value) : "");
+                setTransportOverridden(true);
+              }}
               min={0}
               step="0.01"
               placeholder="0.00"
@@ -576,6 +629,20 @@ export default function NewSalePage() {
               className={`${inputClass} pl-8`}
             />
           </div>
+        </div>
+
+        {/* Our Invoice No */}
+        <div>
+          <label className={labelClass}>
+            Our Invoice No <span className="text-[#ADB5BD] font-normal">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={ourInvoiceNo}
+            onChange={(e) => setOurInvoiceNo(e.target.value)}
+            placeholder="e.g. INV-2024-001"
+            className={inputClass}
+          />
         </div>
 
         {/* Notes */}

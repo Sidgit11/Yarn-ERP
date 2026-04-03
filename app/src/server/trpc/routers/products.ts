@@ -14,7 +14,7 @@ export const productsRouter = router({
         .orderBy(asc(products.millBrand));
       return rows.map((row) => ({
         ...row,
-        fullName: `${row.millBrand} ${row.fibreType} ${row.count} ${row.qualityGrade}`,
+        fullName: `${row.millBrand} ${row.fibreType} ${row.count} ${row.qualityGrade}${row.colorShade ? ` ${row.colorShade}` : ""}`,
       }));
     }),
 
@@ -28,7 +28,7 @@ export const productsRouter = router({
       const row = result[0];
       return {
         ...row,
-        fullName: `${row.millBrand} ${row.fibreType} ${row.count} ${row.qualityGrade}`,
+        fullName: `${row.millBrand} ${row.fibreType} ${row.count} ${row.qualityGrade}${row.colorShade ? ` ${row.colorShade}` : ""}`,
       };
     }),
 
@@ -38,6 +38,8 @@ export const productsRouter = router({
       fibreType: z.enum(["PC", "Cotton", "Polyester", "Viscose", "Nylon", "Acrylic", "Blended"]),
       count: z.string().min(1),
       qualityGrade: z.enum(["Top", "Standard", "Economy"]),
+      hsnCode: z.string().optional(),
+      colorShade: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const result = await ctx.db.insert(products).values({
@@ -46,6 +48,8 @@ export const productsRouter = router({
         fibreType: input.fibreType,
         count: input.count,
         qualityGrade: input.qualityGrade,
+        hsnCode: input.hsnCode || null,
+        colorShade: input.colorShade || null,
       }).returning();
       return result[0];
     }),
@@ -57,6 +61,8 @@ export const productsRouter = router({
       fibreType: z.enum(["PC", "Cotton", "Polyester", "Viscose", "Nylon", "Acrylic", "Blended"]),
       count: z.string().min(1),
       qualityGrade: z.enum(["Top", "Standard", "Economy"]),
+      hsnCode: z.string().optional(),
+      colorShade: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const result = await ctx.db.update(products)
@@ -65,6 +71,8 @@ export const productsRouter = router({
           fibreType: input.fibreType,
           count: input.count,
           qualityGrade: input.qualityGrade,
+          hsnCode: input.hsnCode || null,
+          colorShade: input.colorShade || null,
           updatedAt: new Date(),
         })
         .where(and(eq(products.id, input.id), eq(products.tenantId, ctx.tenantId)))

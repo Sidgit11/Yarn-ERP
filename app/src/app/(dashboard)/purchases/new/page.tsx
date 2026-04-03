@@ -32,6 +32,8 @@ export default function NewPurchasePage() {
   const [transport, setTransport] = useState<number | "">("");
   const [amountPaid, setAmountPaid] = useState<number | "">("");
   const [notes, setNotes] = useState("");
+  const [transporterId, setTransporterId] = useState("");
+  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
 
   // Fetch existing purchase for edit mode
   const { data: existingPurchase } = trpc.purchases.getById.useQuery(
@@ -54,6 +56,8 @@ export default function NewPurchasePage() {
       setGstPct(existingPurchase.gstPct);
       setTransport(parseFloat(existingPurchase.transport));
       setAmountPaid(parseFloat(existingPurchase.amountPaid));
+      setTransporterId(existingPurchase.transporterId || "");
+      setSupplierInvoiceNo(existingPurchase.supplierInvoiceNo || "");
     }
   }, [existingPurchase, isEditing]);
 
@@ -61,6 +65,7 @@ export default function NewPurchasePage() {
   const { data: productsList } = trpc.products.list.useQuery();
   const { data: suppliers } = trpc.contacts.list.useQuery({ type: "Mill" });
   const { data: brokers } = trpc.contacts.list.useQuery({ type: "Broker" });
+  const { data: transporters } = trpc.contacts.list.useQuery({ type: "Transporter" });
 
   // Smart suggestion: auto-select supplier when product is selected
   const selectedProduct = productsList?.find((p) => p.id === productId);
@@ -122,6 +127,14 @@ export default function NewPurchasePage() {
 
   const selectedSupplier = suppliers?.find((s) => s.id === supplierId);
   const selectedBroker = brokers?.find((b) => b.id === brokerId);
+  const selectedTransporter = transporters?.find((t) => t.id === transporterId);
+
+  // Auto-fill transport when transporter or qtyBags changes
+  useEffect(() => {
+    if (selectedTransporter && selectedTransporter.transporterRatePerBag && typeof qtyBags === "number" && qtyBags > 0) {
+      setTransport(qtyBags * parseFloat(selectedTransporter.transporterRatePerBag));
+    }
+  }, [transporterId, qtyBags, selectedTransporter]);
 
   const canSubmit =
     date && productId && supplierId && typeof qtyBags === "number" && qtyBags > 0 && kgPerBag > 0 && typeof ratePerKg === "number" && ratePerKg > 0;
@@ -141,6 +154,8 @@ export default function NewPurchasePage() {
       gstPct,
       transport: String(typeof transport === "number" ? transport : 0),
       amountPaid: String(typeof amountPaid === "number" ? amountPaid : 0),
+      transporterId: transporterId || undefined,
+      supplierInvoiceNo: supplierInvoiceNo || undefined,
     };
     if (isEditing && editId) {
       updatePurchase.mutate({ id: editId, ...payload });
@@ -387,6 +402,28 @@ export default function NewPurchasePage() {
           </div>
         )}
 
+        {/* Transporter */}
+        <div>
+          <label className={labelClass}>
+            Transporter <span className="text-[#ADB5BD] font-normal">(optional)</span>
+          </label>
+          <select
+            value={transporterId}
+            onChange={(e) => {
+              setTransporterId(e.target.value);
+              if (!e.target.value) setTransport("");
+            }}
+            className={inputClass}
+          >
+            <option value="">No transporter</option>
+            {transporters?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}{t.transporterRatePerBag ? ` (Rs${t.transporterRatePerBag}/bag)` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Qty and Kg per Bag */}
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -472,7 +509,8 @@ export default function NewPurchasePage() {
         {/* Transport */}
         <div>
           <label className={labelClass}>
-            Transport <span className="text-[#ADB5BD] font-normal">(optional)</span>
+            Transport{selectedTransporter?.transporterRatePerBag ? ` (@ Rs${selectedTransporter.transporterRatePerBag}/bag)` : ""}{" "}
+            <span className="text-[#ADB5BD] font-normal">(optional)</span>
           </label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6C757D] text-base font-medium">
@@ -515,6 +553,20 @@ export default function NewPurchasePage() {
               className={`${inputClass} pl-8`}
             />
           </div>
+        </div>
+
+        {/* Supplier Invoice No */}
+        <div>
+          <label className={labelClass}>
+            Supplier Invoice No <span className="text-[#ADB5BD] font-normal">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={supplierInvoiceNo}
+            onChange={(e) => setSupplierInvoiceNo(e.target.value)}
+            placeholder="e.g. INV-2024-001"
+            className={inputClass}
+          />
         </div>
 
         {/* Notes */}

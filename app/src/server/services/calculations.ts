@@ -215,8 +215,10 @@ export function productFullName(product: {
   fibreType: string;
   count: string;
   qualityGrade: string;
+  colorShade?: string | null;
 }): string {
-  return `${product.millBrand} ${product.fibreType} ${product.count} ${product.qualityGrade}`;
+  const base = `${product.millBrand} ${product.fibreType} ${product.count} ${product.qualityGrade}`;
+  return product.colorShade ? `${base} ${product.colorShade}` : base;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

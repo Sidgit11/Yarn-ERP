@@ -29,6 +29,7 @@ export const users = pgTable("users", {
   email: text("email").unique(),
   passwordHash: text("password_hash").notNull(),
   name: text("name"),
+  role: text("role").default("admin"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -66,6 +67,13 @@ export const contacts = pgTable("contacts", {
   type: contactTypeEnum("type").notNull(),
   phone: text("phone"),
   city: text("city"),
+  gstin: text("gstin"),
+  email: text("email"),
+  creditTermDays: integer("credit_term_days"),
+  bankAccountNo: text("bank_account_no"),
+  bankIfsc: text("bank_ifsc"),
+  bankName: text("bank_name"),
+  creditLimit: numeric("credit_limit", { precision: 14, scale: 2 }),
   brokerCommissionType: brokerCommissionTypeEnum("broker_commission_type"),
   brokerCommissionValue: numeric("broker_commission_value", { precision: 14, scale: 2 }),
   transporterRatePerBag: numeric("transporter_rate_per_bag", { precision: 14, scale: 2 }),
@@ -86,6 +94,8 @@ export const products = pgTable("products", {
   fibreType: fibreTypeEnum("fibre_type").notNull(),
   count: text("count").notNull(), // "30s", "40s"
   qualityGrade: qualityGradeEnum("quality_grade").notNull(),
+  hsnCode: text("hsn_code"),
+  colorShade: text("color_shade"),
   active: boolean("active").default(true).notNull(),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -105,6 +115,7 @@ export const purchases = pgTable("purchases", {
   supplierId: uuid("supplier_id").references(() => contacts.id).notNull(),
   viaBroker: boolean("via_broker").default(false).notNull(),
   brokerId: uuid("broker_id").references(() => contacts.id),
+  transporterId: uuid("transporter_id").references(() => contacts.id),
   qtyBags: integer("qty_bags").notNull(),
   kgPerBag: numeric("kg_per_bag", { precision: 8, scale: 2 }).notNull(),
   ratePerKg: numeric("rate_per_kg", { precision: 14, scale: 2 }).notNull(),
@@ -112,6 +123,9 @@ export const purchases = pgTable("purchases", {
   transport: numeric("transport", { precision: 14, scale: 2 }).default("0.00").notNull(),
   ccDrawDate: date("cc_draw_date"),
   amountPaid: numeric("amount_paid", { precision: 14, scale: 2 }).default("0.00").notNull(),
+  supplierInvoiceNo: text("supplier_invoice_no"),
+  dueDate: date("due_date"),
+  financialYear: text("financial_year"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -132,12 +146,16 @@ export const sales = pgTable("sales", {
   buyerId: uuid("buyer_id").references(() => contacts.id).notNull(),
   viaBroker: boolean("via_broker").default(false).notNull(),
   brokerId: uuid("broker_id").references(() => contacts.id),
+  transporterId: uuid("transporter_id").references(() => contacts.id),
   qtyBags: integer("qty_bags").notNull(),
   kgPerBag: numeric("kg_per_bag", { precision: 8, scale: 2 }).notNull(),
   ratePerKg: numeric("rate_per_kg", { precision: 14, scale: 2 }).notNull(),
   gstPct: numeric("gst_pct", { precision: 5, scale: 2 }).notNull(),
   transport: numeric("transport", { precision: 14, scale: 2 }).default("0.00").notNull(),
   amountReceived: numeric("amount_received", { precision: 14, scale: 2 }).default("0.00").notNull(),
+  ourInvoiceNo: text("our_invoice_no"),
+  dueDate: date("due_date"),
+  financialYear: text("financial_year"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -161,6 +179,7 @@ export const payments = pgTable("payments", {
   viaCC: boolean("via_cc").default(false).notNull(),
   reference: text("reference"),
   notes: text("notes"),
+  financialYear: text("financial_year"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -218,6 +237,11 @@ export const purchasesRelations = relations(purchases, ({ one }) => ({
     references: [contacts.id],
     relationName: "purchaseBroker",
   }),
+  transporter: one(contacts, {
+    fields: [purchases.transporterId],
+    references: [contacts.id],
+    relationName: "purchaseTransporter",
+  }),
 }));
 
 export const salesRelations = relations(sales, ({ one }) => ({
@@ -235,6 +259,11 @@ export const salesRelations = relations(sales, ({ one }) => ({
     references: [contacts.id],
     relationName: "saleBroker",
   }),
+  transporter: one(contacts, {
+    fields: [sales.transporterId],
+    references: [contacts.id],
+    relationName: "saleTransporter",
+  }),
 }));
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
@@ -248,8 +277,10 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
 export const contactsRelations = relations(contacts, ({ many }) => ({
   purchasesAsSupplier: many(purchases, { relationName: "purchaseSupplier" }),
   purchasesAsBroker: many(purchases, { relationName: "purchaseBroker" }),
+  purchasesAsTransporter: many(purchases, { relationName: "purchaseTransporter" }),
   salesAsBuyer: many(sales, { relationName: "saleBuyer" }),
   salesAsBroker: many(sales, { relationName: "saleBroker" }),
+  salesAsTransporter: many(sales, { relationName: "saleTransporter" }),
   paymentsAsParty: many(payments, { relationName: "paymentParty" }),
 }));
 
