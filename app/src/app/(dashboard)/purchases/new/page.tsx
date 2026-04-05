@@ -184,7 +184,7 @@ export default function NewPurchasePage() {
               + Record CC Draw
             </Link>
             <Link
-              href="/payments/new"
+              href={`/payments/new?partyId=${supplierId}&txnId=${savedData.displayId}`}
               className="w-full min-h-[48px] flex items-center justify-center px-4 py-3 bg-[#2980B9] text-white rounded-xl font-semibold text-base hover:bg-[#2471A3] transition-colors"
             >
               + Record Payment

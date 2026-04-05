@@ -215,7 +215,7 @@ export default function NewSalePage() {
           </div>
           <div className="flex flex-col gap-3">
             <Link
-              href="/payments/new"
+              href={`/payments/new?partyId=${buyerId}&txnId=${savedData.displayId}`}
               className="w-full min-h-[48px] flex items-center justify-center px-4 py-3 bg-[#2980B9] text-white rounded-xl font-semibold text-base hover:bg-[#2471A3] transition-colors"
             >
               + Record Payment

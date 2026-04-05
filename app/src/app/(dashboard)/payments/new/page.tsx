@@ -40,7 +40,14 @@ export default function NewPaymentPage() {
   const editId = searchParams.get("edit");
   const isEditing = !!editId;
 
-  const [form, setForm] = useState<PaymentFormData>(emptyForm);
+  const prefillPartyId = searchParams.get("partyId") ?? "";
+  const prefillTxnId = searchParams.get("txnId") ?? "";
+
+  const [form, setForm] = useState<PaymentFormData>({
+    ...emptyForm,
+    partyId: prefillPartyId,
+    againstTxnId: prefillTxnId,
+  });
   const [viaCC, setViaCC] = useState(true);
   const [displayAmount, setDisplayAmount] = useState("");
   const [showReview, setShowReview] = useState(false);
