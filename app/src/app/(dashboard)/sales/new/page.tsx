@@ -29,7 +29,6 @@ export default function NewSalePage() {
   const [ratePerKg, setRatePerKg] = useState<number | "">("");
   const [gstPct, setGstPct] = useState("5");
   const [transport, setTransport] = useState<number | "">("");
-  const [amountReceived, setAmountReceived] = useState<number | "">("");
   const [ourInvoiceNo, setOurInvoiceNo] = useState("");
   const [notes, setNotes] = useState("");
   const [transporterId, setTransporterId] = useState("");
@@ -59,7 +58,6 @@ export default function NewSalePage() {
       setRatePerKg(parseFloat(existingData.ratePerKg));
       setGstPct(existingData.gstPct);
       setTransport(parseFloat(existingData.transport));
-      setAmountReceived(parseFloat(existingData.amountReceived));
       setTransporterId(existingData.transporterId || "");
       setOurInvoiceNo(existingData.ourInvoiceNo || "");
       if (existingData.transporterId) {
@@ -130,7 +128,6 @@ export default function NewSalePage() {
     const bags = typeof qtyBags === "number" ? qtyBags : 0;
     const rate = typeof ratePerKg === "number" ? ratePerKg : 0;
     const trans = typeof transport === "number" ? transport : 0;
-    const received = typeof amountReceived === "number" ? amountReceived : 0;
     const gst = parseFloat(gstPct);
     const avgCost = avgCostPerKg ?? 0;
 
@@ -152,7 +149,6 @@ export default function NewSalePage() {
 
     const grossMargin = baseAmount - cogs - trans - brokerCommission;
     const grossMarginPct = baseAmount > 0 ? (grossMargin / baseAmount) * 100 : 0;
-    const balanceReceivable = totalInclGst - received;
 
     return {
       totalKg,
@@ -164,9 +160,8 @@ export default function NewSalePage() {
       brokerCommission,
       grossMargin,
       grossMarginPct,
-      balanceReceivable,
     };
-  }, [qtyBags, kgPerBag, ratePerKg, gstPct, transport, amountReceived, avgCostPerKg, viaBroker, selectedBroker]);
+  }, [qtyBags, kgPerBag, ratePerKg, gstPct, transport, avgCostPerKg, viaBroker, selectedBroker]);
 
   const selectedProduct = productsList?.find((p) => p.id === productId);
   const selectedBuyer = buyers?.find((b) => b.id === buyerId);
@@ -188,7 +183,7 @@ export default function NewSalePage() {
       ratePerKg: String(ratePerKg),
       gstPct,
       transport: String(typeof transport === "number" ? transport : 0),
-      amountReceived: String(typeof amountReceived === "number" ? amountReceived : 0),
+      amountReceived: "0",
       transporterId: transporterId || undefined,
       ourInvoiceNo: ourInvoiceNo || undefined,
     };
@@ -332,13 +327,6 @@ export default function NewSalePage() {
               </div>
             </div>
           </div>
-
-          {computed.balanceReceivable > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-[#922B21] font-medium">Balance Receivable</span>
-              <span className="text-[#922B21] font-bold">{formatIndianCurrency(computed.balanceReceivable)}</span>
-            </div>
-          )}
 
           <div className="flex gap-3 pt-4">
             <button
@@ -612,25 +600,6 @@ export default function NewSalePage() {
           </div>
         </div>
 
-        {/* Amount Received */}
-        <div>
-          <label className={labelClass}>Amount Received <span className="text-[#ADB5BD] font-normal">(optional)</span></label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6C757D] text-base font-medium">
-              ₹
-            </span>
-            <input
-              type="number"
-              value={amountReceived}
-              onChange={(e) => setAmountReceived(e.target.value ? parseFloat(e.target.value) : "")}
-              min={0}
-              step="0.01"
-              placeholder="0.00"
-              className={`${inputClass} pl-8`}
-            />
-          </div>
-        </div>
-
         {/* Our Invoice No */}
         <div>
           <label className={labelClass}>
@@ -657,16 +626,6 @@ export default function NewSalePage() {
             placeholder="Optional notes..."
             className={`${inputClass} resize-none`}
           />
-        </div>
-
-        {/* Balance Receivable */}
-        <div className="bg-[#FADBD8] border border-[#E74C3C] rounded-xl p-4">
-          <div className="flex justify-between items-center">
-            <span className="font-semibold text-[#922B21]">BALANCE RECEIVABLE</span>
-            <span className="text-lg font-bold text-[#922B21]">
-              {formatIndianCurrency(computed.balanceReceivable)}
-            </span>
-          </div>
         </div>
 
         {/* Submit */}

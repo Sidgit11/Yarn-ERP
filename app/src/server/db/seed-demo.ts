@@ -225,7 +225,7 @@ async function seedDemo() {
     gstPct: "5.00",
     transport: "750.00",    // 50 bags x Rs15
     ccDrawDate: "2026-03-01",
-    amountPaid: "0.00",
+    amountPaid: "0",
   }).returning();
   console.log("P001: 50 bags Vardhman PC 30s @ Rs200 = 10L base");
 
@@ -243,7 +243,7 @@ async function seedDemo() {
     ratePerKg: "195.00",
     gstPct: "5.00",
     transport: "450.00",
-    amountPaid: "100000.00",  // Rs1L paid upfront
+    amountPaid: "0",  // Payments recorded separately
   }).returning();
   console.log("P002: 30 bags Rajendra PC 30s @ Rs195 = 5.85L base");
 
@@ -261,7 +261,7 @@ async function seedDemo() {
     ratePerKg: "180.00",
     gstPct: "5.00",
     transport: "375.00",
-    amountPaid: "0.00",
+    amountPaid: "0",
   }).returning();
   console.log("P003: 25 bags Vardhman Cotton 40s @ Rs180 = 4.5L base");
 
@@ -279,7 +279,7 @@ async function seedDemo() {
     ratePerKg: "150.00",
     gstPct: "5.00",
     transport: "600.00",
-    amountPaid: "0.00",
+    amountPaid: "0",
   }).returning();
   console.log("P004: 40 bags Nahar Polyester 30s @ Rs150 = 6L base");
 
@@ -299,7 +299,7 @@ async function seedDemo() {
     gstPct: "5.00",
     transport: "450.00",
     ccDrawDate: "2026-03-18",
-    amountPaid: "0.00",
+    amountPaid: "0",
   }).returning();
   console.log("P005: 30 bags Vardhman PC 30s @ Rs205 = 6.15L base");
 
@@ -319,7 +319,7 @@ async function seedDemo() {
     ratePerKg: "220.00",
     gstPct: "5.00",
     transport: "525.00",
-    amountReceived: "200000.00",  // Rs2L received upfront
+    amountReceived: "0",  // Payments recorded separately
   }).returning();
   console.log("S001: 35 bags Vardhman PC 30s @ Rs220 = 7.7L base → Ramesh");
 
@@ -336,7 +336,7 @@ async function seedDemo() {
     ratePerKg: "215.00",
     gstPct: "5.00",
     transport: "300.00",
-    amountReceived: "0.00",
+    amountReceived: "0",
   }).returning();
   console.log("S002: 20 bags Rajendra PC 30s @ Rs215 = 4.3L base → Mahesh");
 
@@ -354,7 +354,7 @@ async function seedDemo() {
     ratePerKg: "200.00",
     gstPct: "5.00",
     transport: "225.00",
-    amountReceived: "100000.00",  // Rs1L received
+    amountReceived: "0",  // Payments recorded separately
   }).returning();
   console.log("S003: 15 bags Vardhman Cotton 40s @ Rs200 = 3L base → Krishna Fabrics");
 
@@ -371,7 +371,7 @@ async function seedDemo() {
     ratePerKg: "170.00",
     gstPct: "5.00",
     transport: "375.00",
-    amountReceived: "0.00",
+    amountReceived: "0",
   }).returning();
   console.log("S004: 25 bags Nahar Polyester 30s @ Rs170 = 4.25L base → Ramesh");
 

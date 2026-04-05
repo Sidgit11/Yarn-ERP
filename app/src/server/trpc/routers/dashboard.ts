@@ -152,14 +152,24 @@ export const dashboardRouter = router({
     const totalPayables = totalPurchaseGrand.minus(totalPurchasePaid).minus(totalPaymentsPaid).plus(totalBrokerPaid);
     const totalReceivables = totalSaleInclGst.minus(totalSaleReceived).minus(totalPaymentsReceived);
 
+    // Build linked payments map by againstTxnId for pending count calculation
+    const linkedPaymentsByTxn: Record<string, number> = {};
+    for (const pay of allPayments) {
+      if (pay.againstTxnId) {
+        linkedPaymentsByTxn[pay.againstTxnId] = (linkedPaymentsByTxn[pay.againstTxnId] ?? 0) + parseFloat(pay.amount);
+      }
+    }
+
     const pendingPurchasePayments = allPurchases.filter((p) => {
       const t = computePurchaseTotals(p);
-      return D(p.amountPaid).lt(t.grandTotal);
+      const totalPaid = D(p.amountPaid).plus(linkedPaymentsByTxn[p.displayId] ?? 0);
+      return totalPaid.lt(t.grandTotal);
     }).length;
 
     const pendingSaleCollections = allSales.filter((s) => {
       const t = computeSaleTotals(s);
-      return D(s.amountReceived).lt(t.totalInclGst);
+      const totalReceived = D(s.amountReceived).plus(linkedPaymentsByTxn[s.displayId] ?? 0);
+      return totalReceived.lt(t.totalInclGst);
     }).length;
 
     const cashInInventory = totalPurchaseBase.minus(totalCogs);

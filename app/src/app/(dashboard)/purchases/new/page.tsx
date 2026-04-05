@@ -30,7 +30,6 @@ export default function NewPurchasePage() {
   const [ratePerKg, setRatePerKg] = useState<number | "">("");
   const [gstPct, setGstPct] = useState("5");
   const [transport, setTransport] = useState<number | "">("");
-  const [amountPaid, setAmountPaid] = useState<number | "">("");
   const [notes, setNotes] = useState("");
   const [transporterId, setTransporterId] = useState("");
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
@@ -55,7 +54,6 @@ export default function NewPurchasePage() {
       setRatePerKg(parseFloat(existingPurchase.ratePerKg));
       setGstPct(existingPurchase.gstPct);
       setTransport(parseFloat(existingPurchase.transport));
-      setAmountPaid(parseFloat(existingPurchase.amountPaid));
       setTransporterId(existingPurchase.transporterId || "");
       setSupplierInvoiceNo(existingPurchase.supplierInvoiceNo || "");
     }
@@ -112,7 +110,6 @@ export default function NewPurchasePage() {
     const bags = typeof qtyBags === "number" ? qtyBags : 0;
     const rate = typeof ratePerKg === "number" ? ratePerKg : 0;
     const trans = typeof transport === "number" ? transport : 0;
-    const paid = typeof amountPaid === "number" ? amountPaid : 0;
     const gst = parseFloat(gstPct);
 
     const totalKg = bags * kgPerBag;
@@ -120,10 +117,9 @@ export default function NewPurchasePage() {
     const gstAmount = (baseAmount * gst) / 100;
     const totalInclGst = baseAmount + gstAmount;
     const grandTotal = totalInclGst + trans;
-    const balanceDue = grandTotal - paid;
 
-    return { totalKg, baseAmount, gstAmount, totalInclGst, grandTotal, balanceDue };
-  }, [qtyBags, kgPerBag, ratePerKg, gstPct, transport, amountPaid]);
+    return { totalKg, baseAmount, gstAmount, totalInclGst, grandTotal };
+  }, [qtyBags, kgPerBag, ratePerKg, gstPct, transport]);
 
   const selectedSupplier = suppliers?.find((s) => s.id === supplierId);
   const selectedBroker = brokers?.find((b) => b.id === brokerId);
@@ -153,7 +149,7 @@ export default function NewPurchasePage() {
       ratePerKg: String(ratePerKg),
       gstPct,
       transport: String(typeof transport === "number" ? transport : 0),
-      amountPaid: String(typeof amountPaid === "number" ? amountPaid : 0),
+      amountPaid: "0",
       transporterId: transporterId || undefined,
       supplierInvoiceNo: supplierInvoiceNo || undefined,
     };
@@ -270,13 +266,6 @@ export default function NewPurchasePage() {
               {formatIndianCurrency(computed.grandTotal)}
             </span>
           </div>
-
-          {computed.balanceDue > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-[#922B21] font-medium">Balance Due</span>
-              <span className="text-[#922B21] font-bold">{formatIndianCurrency(computed.balanceDue)}</span>
-            </div>
-          )}
 
           <div className="flex gap-3 pt-4">
             <button
@@ -536,25 +525,6 @@ export default function NewPurchasePage() {
           </div>
         </div>
 
-        {/* Amount Paid */}
-        <div>
-          <label className={labelClass}>Amount Paid</label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6C757D] text-base font-medium">
-              ₹
-            </span>
-            <input
-              type="number"
-              value={amountPaid}
-              onChange={(e) => setAmountPaid(e.target.value ? parseFloat(e.target.value) : "")}
-              min={0}
-              step="0.01"
-              placeholder="0.00"
-              className={`${inputClass} pl-8`}
-            />
-          </div>
-        </div>
-
         {/* Supplier Invoice No */}
         <div>
           <label className={labelClass}>
@@ -581,16 +551,6 @@ export default function NewPurchasePage() {
             placeholder="Optional notes..."
             className={`${inputClass} resize-none`}
           />
-        </div>
-
-        {/* Balance Due */}
-        <div className="bg-[#FADBD8] border border-[#E74C3C] rounded-xl p-4">
-          <div className="flex justify-between items-center">
-            <span className="font-semibold text-[#922B21]">BALANCE DUE</span>
-            <span className="text-lg font-bold text-[#922B21]">
-              {formatIndianCurrency(computed.balanceDue)}
-            </span>
-          </div>
         </div>
 
         {/* Submit */}
