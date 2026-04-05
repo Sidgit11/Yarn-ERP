@@ -75,7 +75,7 @@ export const paymentsRouter = router({
         .then((r: any[]) => r[0]);
       if (!party) return [];
 
-      const txns: Array<{ displayId: string; label: string }> = [];
+      const txns: Array<{ displayId: string; label: string; balance: number; total: number; date: string }> = [];
 
       if (party.type === "Mill") {
         const purchaseRows = await ctx.db
@@ -103,6 +103,9 @@ export const paymentsRouter = router({
             txns.push({
               displayId: p.displayId,
               label: `${p.displayId} — ₹${balance.toLocaleString("en-IN")} due`,
+              balance,
+              total: totals.grandTotal,
+              date: p.date,
             });
           }
         }
@@ -131,6 +134,9 @@ export const paymentsRouter = router({
             txns.push({
               displayId: s.displayId,
               label: `${s.displayId} — ₹${balance.toLocaleString("en-IN")} due`,
+              balance,
+              total: totals.totalInclGst,
+              date: s.date,
             });
           }
         }

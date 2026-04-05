@@ -407,9 +407,9 @@ export default function NewPaymentPage() {
               </label>
               <select
                 value={form.againstTxnId}
-                onChange={(e) =>
-                  setForm({ ...form, againstTxnId: e.target.value })
-                }
+                onChange={(e) => {
+                  setForm({ ...form, againstTxnId: e.target.value });
+                }}
                 className={inputClass}
               >
                 <option value="">None (general payment)</option>
@@ -419,6 +419,43 @@ export default function NewPaymentPage() {
                   </option>
                 ))}
               </select>
+
+              {/* Txn details + remaining balance hint */}
+              {form.againstTxnId && (() => {
+                const txn = openTxns.find((t) => t.displayId === form.againstTxnId);
+                if (!txn) return null;
+                const payingAmount = parseFloat(form.amount) || 0;
+                const remaining = txn.balance - payingAmount;
+                return (
+                  <div className="mt-2 bg-[#F8F9FA] border border-[#DEE2E6] rounded-xl px-4 py-3 space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#6C757D]">{form.againstTxnId} total</span>
+                      <span className="font-medium text-[#2C3E50]">{formatIndianCurrency(txn.total)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#6C757D]">Pending before this payment</span>
+                      <span className="font-medium text-[#922B21]">{formatIndianCurrency(txn.balance)}</span>
+                    </div>
+                    {payingAmount > 0 && (
+                      <>
+                        <div className="border-t border-[#DEE2E6] my-1" />
+                        <div className="flex justify-between text-xs">
+                          <span className="text-[#6C757D]">This payment</span>
+                          <span className="font-medium text-[#1B4F72]">{formatIndianCurrency(payingAmount)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className={remaining <= 0 ? "text-[#1E8449]" : "text-[#922B21]"}>
+                            {remaining <= 0 ? "Fully settled" : "Still pending"}
+                          </span>
+                          <span className={remaining <= 0 ? "text-[#1E8449]" : "text-[#922B21]"}>
+                            {remaining <= 0 ? "Settled" : formatIndianCurrency(remaining)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
