@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Office lock files
+.~lock.*
+~$*.docx
+~$*.xlsx
+
+# Binary spec files (kept locally, excluded from repo)
+*.xlsx
+*.xls
+*.docx
+*.pdf
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env*.local
+.env.production
+
+# Claude artifacts
+.claude/
+
+# Node (in case anyone runs anything at root)
+node_modules/
