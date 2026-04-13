@@ -395,7 +395,7 @@ export default function DashboardPage() {
               <p className="text-[32px] font-bold text-gray-800 leading-10 tracking-tight tabular-nums">{stats.totalPurchases}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400 font-medium mb-1">Pending Pay</p>
+              <p className="text-xs text-gray-400 font-medium mb-1">Pending Payments</p>
               <p className="text-[32px] font-bold text-orange-600 leading-10 tracking-tight tabular-nums">{stats.pendingPayments}</p>
             </div>
             <div>
@@ -403,7 +403,7 @@ export default function DashboardPage() {
               <p className="text-[32px] font-bold text-gray-800 leading-10 tracking-tight tabular-nums">{stats.totalSales}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400 font-medium mb-1">Pending Coll</p>
+              <p className="text-xs text-gray-400 font-medium mb-1">Pending Collections</p>
               <p className="text-[32px] font-bold text-orange-600 leading-10 tracking-tight tabular-nums">{stats.pendingCollections}</p>
             </div>
             {stats.overdueCollections > 0 && (
