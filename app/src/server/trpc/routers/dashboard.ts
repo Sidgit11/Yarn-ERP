@@ -70,10 +70,11 @@ export const dashboardRouter = router({
       productPurchases[p.productId].totalKg += t.totalKg;
     }
 
-    // ── Batch-load broker contacts for sales (1 query, not N) ─────────────
-    const brokerIds = [...new Set(
-      allSales.filter((s) => s.viaBroker && s.brokerId).map((s) => s.brokerId!)
-    )];
+    // ── Batch-load broker contacts for sales + purchases (1 query, not N) ──
+    const brokerIds = [...new Set([
+      ...allSales.filter((s) => s.viaBroker && s.brokerId).map((s) => s.brokerId!),
+      ...allPurchases.filter((p) => p.viaBroker && p.brokerId).map((p) => p.brokerId!),
+    ])];
     let brokerMap = new Map<string, any>();
     if (brokerIds.length > 0) {
       const brokerRows = await ctx.db.select().from(contacts)
@@ -119,6 +120,27 @@ export const dashboardRouter = router({
         }
       }
     }
+
+    // ── Purchase broker commission ──────────────────────────────────────────
+    let totalPurchaseBrokerCommission = D(0);
+    for (const p of allPurchases) {
+      if (p.viaBroker && p.brokerId) {
+        const broker = brokerMap.get(p.brokerId);
+        if (broker) {
+          const t = computePurchaseTotals(p);
+          totalPurchaseBrokerCommission = totalPurchaseBrokerCommission.plus(
+            computeBrokerCommission(
+              broker.brokerCommissionType,
+              broker.brokerCommissionValue,
+              p.qtyBags,
+              t.baseAmount
+            )
+          );
+        }
+      }
+    }
+    // Total broker commission = sales + purchases
+    totalBrokerCommission = totalBrokerCommission.plus(totalPurchaseBrokerCommission);
 
     // ── Payment aggregation ───────────────────────────────────────────────
     // Batch-load party contacts for payments (1 query, not N)

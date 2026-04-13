@@ -53,6 +53,16 @@ export const ledgerRouter = router({
           salesByBrokerId.set(s.brokerId, brokerArr);
         }
       }
+      // Index purchases by brokerId
+      const purchasesByBrokerId = new Map<string, typeof allPurchases>();
+      for (const p of allPurchases) {
+        if (p.viaBroker && p.brokerId) {
+          const arr = purchasesByBrokerId.get(p.brokerId) ?? [];
+          arr.push(p);
+          purchasesByBrokerId.set(p.brokerId, arr);
+        }
+      }
+
       // Index purchases and sales by transporterId
       const purchasesByTransporterId = new Map<string, typeof allPurchases>();
       for (const p of allPurchases) {
@@ -112,6 +122,7 @@ export const ledgerRouter = router({
             }
             direction = "Receivable";
           } else if (contact.type === "Broker") {
+            // Commission from sales
             const brokerSales = salesByBrokerId.get(contact.id) ?? [];
             for (const s of brokerSales) {
               const t = computeSaleTotals(s);
@@ -120,6 +131,19 @@ export const ledgerRouter = router({
                   contact.brokerCommissionType,
                   contact.brokerCommissionValue,
                   s.qtyBags,
+                  t.baseAmount
+                )
+              );
+            }
+            // Commission from purchases
+            const brokerPurchases = purchasesByBrokerId.get(contact.id) ?? [];
+            for (const p of brokerPurchases) {
+              const t = computePurchaseTotals(p);
+              totalBilled = totalBilled.plus(
+                computeBrokerCommission(
+                  contact.brokerCommissionType,
+                  contact.brokerCommissionValue,
+                  p.qtyBags,
                   t.baseAmount
                 )
               );
