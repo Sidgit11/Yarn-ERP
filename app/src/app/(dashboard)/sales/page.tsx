@@ -2,13 +2,14 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Pencil, Trash2, AlertTriangle, Clock } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function SalesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const utils = trpc.useUtils();
   const { data: salesList, isLoading } = trpc.sales.list.useQuery();
 
@@ -210,12 +211,15 @@ export default function SalesPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredList.map((s) => (
+          {filteredList.map((s) => {
+            const isExpanded = expandedId === s.id;
+            return (
             <div
               key={s.id}
-              className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-4 hover:shadow-md transition-shadow"
+              className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => setExpandedId(isExpanded ? null : s.id)}
             >
-              {/* Row 1: displayId, product name, date */}
+              {/* Row 1: displayId, product name, date + chevron */}
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-[#1B4F72] text-sm">
@@ -229,12 +233,11 @@ export default function SalesPage() {
                   <span className="text-sm text-[#6C757D]">
                     {formatDate(s.date)}
                   </span>
-                  <Link href={`/sales/new?edit=${s.id}`} className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Edit">
-                    <Pencil size={15} />
-                  </Link>
-                  <button onClick={() => setDeleteConfirmId(s.id)} className="p-1.5 text-gray-400 hover:text-[#E74C3C] transition-colors" title="Delete">
-                    <Trash2 size={15} />
-                  </button>
+                  {isExpanded ? (
+                    <ChevronUp size={16} className="text-[#6C757D]" />
+                  ) : (
+                    <ChevronDown size={16} className="text-[#6C757D]" />
+                  )}
                 </div>
               </div>
 
@@ -298,8 +301,163 @@ export default function SalesPage() {
                   </span>
                 </div>
               ) : null}
+
+              {/* Expanded Detail View */}
+              {isExpanded && (
+                <div className="border-t border-gray-100 mt-3 pt-3" onClick={(e) => e.stopPropagation()}>
+                  {/* Detail Rows */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm mb-3">
+                    <div>
+                      <span className="text-[#6C757D]">Product: </span>
+                      <span className="text-[#2C3E50] font-medium">{s.productName}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#6C757D]">Buyer: </span>
+                      <span className="text-[#2C3E50] font-medium">{s.buyerName}</span>
+                    </div>
+                    {s.viaBroker && (
+                      <div>
+                        <span className="text-[#6C757D]">Broker: </span>
+                        <span className="text-[#2C3E50] font-medium">{s.brokerName}</span>
+                      </div>
+                    )}
+                    {s.ourInvoiceNo && (
+                      <div>
+                        <span className="text-[#6C757D]">Invoice No: </span>
+                        <span className="text-[#2C3E50] font-medium">{s.ourInvoiceNo}</span>
+                      </div>
+                    )}
+                    {s.paymentTermType && (
+                      <div>
+                        <span className="text-[#6C757D]">Payment Terms: </span>
+                        <span className="text-[#2C3E50] font-medium">
+                          {s.paymentTermType === "advance" ? "Advance" : `${s.paymentTermDays} Days Credit`}
+                        </span>
+                      </div>
+                    )}
+                    {s.dueDate && (
+                      <div>
+                        <span className="text-[#6C757D]">Due Date: </span>
+                        <span className="text-[#2C3E50] font-medium">{formatDate(s.dueDate)}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[#6C757D]">Date: </span>
+                      <span className="text-[#2C3E50] font-medium">{formatDate(s.date)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#6C757D]">Quantity: </span>
+                      <span className="text-[#2C3E50] font-medium">
+                        {s.qtyBags} bags × {s.kgPerBag} kg = {s.totalKg} kg
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#6C757D]">Rate: </span>
+                      <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.ratePerKg ?? 0)}/kg</span>
+                    </div>
+                  </div>
+
+                  {/* Amounts */}
+                  <div className="text-sm space-y-1 mb-3">
+                    <h4 className="text-xs font-semibold text-[#6C757D] uppercase tracking-wide mb-1">Amounts</h4>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">Base Amount</span>
+                      <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.baseAmount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">GST ({s.gstPct}%)</span>
+                      <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.gstAmount)}</span>
+                    </div>
+                    {Number(s.transport) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-[#6C757D]">Transport</span>
+                        <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.transport)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-semibold">
+                      <span className="text-[#2C3E50]">Total incl GST</span>
+                      <span className="text-[#2C3E50]">{formatIndianCurrency(s.totalInclGst)}</span>
+                    </div>
+                  </div>
+
+                  {/* Margin Breakdown */}
+                  <div className="text-sm space-y-1 mb-3">
+                    <h4 className="text-xs font-semibold text-[#6C757D] uppercase tracking-wide mb-1">Margin Breakdown</h4>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">Avg Cost</span>
+                      <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.avgCostPerKg)}/kg</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">COGS</span>
+                      <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.cogs)}</span>
+                    </div>
+                    {Number(s.brokerCommission) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-[#6C757D]">Broker Commission</span>
+                        <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.brokerCommission)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-semibold">
+                      <span className="text-[#2C3E50]">Gross Margin</span>
+                      <span className={s.grossMargin >= 0 ? "text-[#1E8449]" : "text-[#922B21]"}>
+                        {formatIndianCurrency(s.grossMargin)} ({s.grossMarginPct.toFixed(1)}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Collection Status */}
+                  <div className="text-sm space-y-1 mb-3">
+                    <h4 className="text-xs font-semibold text-[#6C757D] uppercase tracking-wide mb-1">Collection Status</h4>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">Received</span>
+                      <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.linkedPayments)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">Balance Receivable</span>
+                      <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.balanceReceivable)}</span>
+                    </div>
+                    {s.isOverdue && (
+                      <div className="mt-1">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+                          <AlertTriangle size={12} />
+                          Overdue by {Math.abs(s.daysUntilDue!)} days
+                        </span>
+                      </div>
+                    )}
+                    {s.balanceReceivable > 0 && (
+                      <div className="mt-1">
+                        <Link
+                          href={`/payments/new?saleId=${s.id}`}
+                          className="text-sm font-semibold text-[#1B4F72] hover:text-[#154360] transition-colors"
+                        >
+                          Record Payment &rarr;
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                    <Link
+                      href={`/sales/new?edit=${s.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-[#1B4F72] bg-[#EBF5FB] rounded-lg hover:bg-[#D4E6F1] transition-colors"
+                    >
+                      <Pencil size={14} />
+                      Edit
+                    </Link>
+                    <button
+                      onClick={() => setDeleteConfirmId(s.id)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-[#922B21] bg-[#FADBD8] rounded-lg hover:bg-[#F5B7B1] transition-colors"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

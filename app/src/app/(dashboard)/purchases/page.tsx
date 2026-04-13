@@ -2,13 +2,14 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function PurchasesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const utils = trpc.useUtils();
   const { data: purchasesList, isLoading } = trpc.purchases.list.useQuery();
 
@@ -194,9 +195,10 @@ export default function PurchasesPage() {
           {filteredList.map((p) => (
             <div
               key={p.id}
-              className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-4 hover:shadow-md transition-shadow"
+              className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
             >
-              {/* Row 1: displayId, product name, date */}
+              {/* Row 1: displayId, product name, date, chevron */}
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-[#1B4F72] text-sm">
@@ -210,12 +212,11 @@ export default function PurchasesPage() {
                   <span className="text-sm text-[#6C757D]">
                     {formatDate(p.date)}
                   </span>
-                  <Link href={`/purchases/new?edit=${p.id}`} className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors" title="Edit">
-                    <Pencil size={15} />
-                  </Link>
-                  <button onClick={() => setDeleteConfirmId(p.id)} className="p-1.5 text-gray-400 hover:text-[#E74C3C] transition-colors" title="Delete">
-                    <Trash2 size={15} />
-                  </button>
+                  {expandedId === p.id ? (
+                    <ChevronUp size={16} className="text-[#6C757D]" />
+                  ) : (
+                    <ChevronDown size={16} className="text-[#6C757D]" />
+                  )}
                 </div>
               </div>
 
@@ -245,6 +246,125 @@ export default function PurchasesPage() {
                   <span className="text-sm text-[#922B21] font-medium">
                     Balance: {formatIndianCurrency(p.balanceDue)}
                   </span>
+                </div>
+              )}
+
+              {/* Expanded detail view */}
+              {expandedId === p.id && (
+                <div className="border-t border-gray-100 mt-3 pt-3" onClick={(e) => e.stopPropagation()}>
+                  {/* Detail rows */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm mb-3">
+                    <div>
+                      <span className="text-[#6C757D]">Product: </span>
+                      <span className="text-[#2C3E50] font-medium">{p.productName}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#6C757D]">Supplier: </span>
+                      <span className="text-[#2C3E50] font-medium">{p.supplierName}</span>
+                    </div>
+                    {p.viaBroker && (
+                      <div>
+                        <span className="text-[#6C757D]">Broker: </span>
+                        <span className="text-[#2C3E50] font-medium">{p.brokerName}</span>
+                      </div>
+                    )}
+                    {p.lotNo && (
+                      <div>
+                        <span className="text-[#6C757D]">Lot No: </span>
+                        <span className="text-[#2C3E50] font-medium">{p.lotNo}</span>
+                      </div>
+                    )}
+                    {p.supplierInvoiceNo && (
+                      <div>
+                        <span className="text-[#6C757D]">Supplier Invoice: </span>
+                        <span className="text-[#2C3E50] font-medium">{p.supplierInvoiceNo}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-[#6C757D]">Date: </span>
+                      <span className="text-[#2C3E50] font-medium">{formatDate(p.date)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#6C757D]">Quantity: </span>
+                      <span className="text-[#2C3E50] font-medium">{p.qtyBags} bags × {p.kgPerBag} kg/bag = {p.totalKg} kg</span>
+                    </div>
+                    <div>
+                      <span className="text-[#6C757D]">Rate: </span>
+                      <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(p.ratePerKg ?? 0)}/kg</span>
+                    </div>
+                  </div>
+
+                  {/* Amounts breakdown */}
+                  <div className="bg-[#F8F9FA] rounded-lg px-3 py-2 text-sm space-y-1 mb-3">
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">Base Amount</span>
+                      <span className="text-[#2C3E50]">{formatIndianCurrency(p.baseAmount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">GST ({p.gstPct}%)</span>
+                      <span className="text-[#2C3E50]">{formatIndianCurrency(p.gstAmount)}</span>
+                    </div>
+                    {Number(p.transport) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-[#6C757D]">Transport</span>
+                        <span className="text-[#2C3E50]">{formatIndianCurrency(p.transport)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-gray-200 pt-1">
+                      <span className="text-[#2C3E50] font-bold">Grand Total</span>
+                      <span className="text-[#2C3E50] font-bold">{formatIndianCurrency(p.grandTotal)}</span>
+                    </div>
+                  </div>
+
+                  {/* Payment status */}
+                  <div className="bg-[#F8F9FA] rounded-lg px-3 py-2 text-sm space-y-1 mb-3">
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">Paid</span>
+                      <span className="text-[#2C3E50]">{formatIndianCurrency(p.linkedPayments)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C757D]">Balance Due</span>
+                      {Number(p.balanceDue) > 0 ? (
+                        <span className="text-[#922B21] font-medium">{formatIndianCurrency(p.balanceDue)}</span>
+                      ) : (
+                        <span className="text-[#1E8449] font-medium">Fully Paid</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[#6C757D]">Status</span>
+                      {statusBadge(p.status)}
+                    </div>
+                    {Number(p.balanceDue) > 0 && (
+                      <div className="pt-1">
+                        <Link
+                          href={`/payments/new?partyId=${p.supplierId}&txnId=${p.displayId}`}
+                          className="text-[#1B4F72] font-semibold text-sm hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Record Payment →
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/purchases/new?edit=${p.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#1B4F72] bg-[#EBF5FB] border border-[#AED6F1] rounded-lg hover:bg-[#D6EAF8] transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Pencil size={14} />
+                      Edit
+                    </Link>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(p.id); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#922B21] bg-[#FADBD8] border border-[#F1948A] rounded-lg hover:bg-[#F5B7B1] transition-colors"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
