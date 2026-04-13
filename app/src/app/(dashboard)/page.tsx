@@ -324,8 +324,28 @@ export default function DashboardPage() {
           <MetricRow label="Receivables" value={formatIndianCurrency(money.totalReceivables)}
             explainer={{ title: "Receivables", description: "Total amount buyers owe you (incl GST). Check Ledger to see who owes what.", formula: "Sale Total (incl GST) - Received - Payments" }} />
           {money.totalPayables > 0 && (
-            <MetricRow label="Payables" value={formatIndianCurrency(money.totalPayables)} isNegative
-              explainer={{ title: "Payables", description: "Amount you still owe to mills/suppliers.", formula: "Purchase Total - Paid - Payments" }} />
+            <>
+              <MetricRow label="Payables" value={formatIndianCurrency(money.totalPayables)} isNegative isBold
+                explainer={{ title: "Total Payables", description: "Total amount you owe across mills, brokers, and transporters.", formula: "Mill payable + Broker pending + Transporter pending" }} />
+              {money.millPayables > 0 && (
+                <div className="flex items-center justify-between py-1 pl-4">
+                  <span className="text-[12px] text-gray-400">Mills</span>
+                  <span className="text-[12px] text-gray-600 tabular-nums">{formatIndianCurrency(money.millPayables)}</span>
+                </div>
+              )}
+              {money.brokerPending > 0 && (
+                <div className="flex items-center justify-between py-1 pl-4">
+                  <span className="text-[12px] text-gray-400">Brokers</span>
+                  <span className="text-[12px] text-gray-600 tabular-nums">{formatIndianCurrency(money.brokerPending)}</span>
+                </div>
+              )}
+              {money.transporterPending > 0 && (
+                <div className="flex items-center justify-between py-1 pl-4">
+                  <span className="text-[12px] text-gray-400">Transporters</span>
+                  <span className="text-[12px] text-gray-600 tabular-nums">{formatIndianCurrency(money.transporterPending)}</span>
+                </div>
+              )}
+            </>
           )}
           <Separator />
           <MetricRow label="Expenses" value={formatIndianCurrency(money.expenses)}

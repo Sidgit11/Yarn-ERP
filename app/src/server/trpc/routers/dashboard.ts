@@ -171,7 +171,36 @@ export const dashboardRouter = router({
     }
 
     // ── Derived metrics ───────────────────────────────────────────────────
-    const totalPayables = totalPurchaseGrand.minus(totalPurchasePaid).minus(totalPaymentsPaid).plus(totalBrokerPaid);
+    // Break down payments by party type
+    let paidToMills = D(0);
+    let paidToBrokers = D(0);
+    let paidToTransporters = D(0);
+    for (const pay of allPayments) {
+      if (pay.direction === "Paid") {
+        const party = partyMap.get(pay.partyId);
+        if (party?.type === "Mill") paidToMills = paidToMills.plus(D(pay.amount));
+        else if (party?.type === "Broker") paidToBrokers = paidToBrokers.plus(D(pay.amount));
+        else if (party?.type === "Transporter") paidToTransporters = paidToTransporters.plus(D(pay.amount));
+      }
+    }
+
+    // Mill payables = purchase grand totals - amountPaid on purchases - payments to mills
+    const millPayables = Decimal_max(totalPurchaseGrand.minus(totalPurchasePaid).minus(paidToMills), D(0));
+
+    // Broker payables = total commission (sales + purchases) - payments to brokers
+    const brokerCommissionPending = Decimal_max(totalBrokerCommission.minus(paidToBrokers), D(0));
+
+    // Transporter payables = total transport on purchases/sales with transporters - payments to transporters
+    let totalTransportBilled = D(0);
+    for (const p of allPurchases) {
+      if (p.transporterId && Number(p.transport) > 0) totalTransportBilled = totalTransportBilled.plus(D(p.transport));
+    }
+    for (const s of allSales) {
+      if (s.transporterId && Number(s.transport) > 0) totalTransportBilled = totalTransportBilled.plus(D(s.transport));
+    }
+    const transporterPayables = Decimal_max(totalTransportBilled.minus(paidToTransporters), D(0));
+
+    const totalPayables = millPayables.plus(brokerCommissionPending).plus(transporterPayables);
     const totalReceivables = totalSaleInclGst.minus(totalSaleReceived).minus(totalPaymentsReceived);
 
     // Build linked payments map by againstTxnId for pending count calculation
@@ -249,7 +278,6 @@ export const dashboardRouter = router({
     const grossMarginPct = totalSaleBase.gt(0) ? grossMargin.div(totalSaleBase).mul(100) : D(0);
     const netMargin = grossMargin.minus(actualInterest);
     const netMarginPct = totalSaleBase.gt(0) ? netMargin.div(totalSaleBase).mul(100) : D(0);
-    const brokerCommissionPending = totalBrokerCommission.minus(totalBrokerPaid);
 
     // ── Inventory per product (indexed for O(N) instead of O(P*M)) ────────
     const purchasesByProduct: Record<string, { bags: number; kg: number }> = {};
@@ -301,7 +329,9 @@ export const dashboardRouter = router({
         cashInInventory: toMoney(cashInInventory),
         totalReceivables: toMoney(totalReceivables),
         totalPayables: toMoney(Decimal_max(totalPayables, D(0))),
-        brokerPending: toMoney(Decimal_max(brokerCommissionPending, D(0))),
+        millPayables: toMoney(millPayables),
+        brokerPending: toMoney(brokerCommissionPending),
+        transporterPending: toMoney(transporterPayables),
         expenses: toMoney(totalPurchaseTransport.plus(totalSaleTransport).plus(totalBrokerCommission)),
         gstNet: toMoney(totalPurchaseGst.minus(totalSaleGst)), // positive = ITC sitting with govt
         unrealizedProfit: toMoney(grossMargin),
