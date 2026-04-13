@@ -5,13 +5,14 @@ import { trpc } from "@/lib/trpc";
 import { AlertTriangle } from "lucide-react";
 import { cn, formatIndianCurrency, formatDate } from "@/lib/utils";
 
-type ContactType = "Mill" | "Buyer" | "Broker";
-type FilterTab = "All" | "Mill" | "Buyer" | "Broker" | "Overdue";
+type ContactType = "Mill" | "Buyer" | "Broker" | "Transporter";
+type FilterTab = "All" | "Mill" | "Buyer" | "Broker" | "Transporter" | "Overdue";
 
 const TYPE_BADGE_COLORS: Record<ContactType, string> = {
   Mill: "bg-[#D6EAF8] text-[#2980B9] border border-[#2980B9]",
   Buyer: "bg-[#D5F5E3] text-[#27AE60] border border-[#27AE60]",
   Broker: "bg-[#FDEBD0] text-[#E67E22] border border-[#E67E22]",
+  Transporter: "bg-[#F3E8FF] text-[#7C3AED] border border-[#7C3AED]",
 };
 
 const DIRECTION_BADGE: Record<string, string> = {
@@ -20,14 +21,14 @@ const DIRECTION_BADGE: Record<string, string> = {
   Overpaid: "bg-[#E8E8E8] text-[#6C757D] border border-[#BDC3C7]",
 };
 
-const TABS: FilterTab[] = ["All", "Mill", "Buyer", "Broker", "Overdue"];
+const TABS: FilterTab[] = ["All", "Mill", "Buyer", "Broker", "Transporter", "Overdue"];
 
 export default function LedgerPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>("All");
   const [search, setSearch] = useState("");
   const [selectedPartyId, setSelectedPartyId] = useState<string | null>(null);
 
-  const typeFilter = activeTab === "All" || activeTab === "Overdue" ? undefined : activeTab;
+  const typeFilter = activeTab === "All" || activeTab === "Overdue" ? undefined : activeTab as "Mill" | "Buyer" | "Broker" | "Transporter";
   const { data: ledgerData, isLoading } = trpc.ledger.list.useQuery(
     typeFilter ? { type: typeFilter } : undefined
   );

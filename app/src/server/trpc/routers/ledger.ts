@@ -14,7 +14,7 @@ export const ledgerRouter = router({
   list: protectedProcedure
     .input(
       z
-        .object({ type: z.enum(["Mill", "Buyer", "Broker"]).optional() })
+        .object({ type: z.enum(["Mill", "Buyer", "Broker", "Transporter"]).optional() })
         .optional()
     )
     .query(async ({ ctx, input }) => {
@@ -53,6 +53,24 @@ export const ledgerRouter = router({
           salesByBrokerId.set(s.brokerId, brokerArr);
         }
       }
+      // Index purchases and sales by transporterId
+      const purchasesByTransporterId = new Map<string, typeof allPurchases>();
+      for (const p of allPurchases) {
+        if (p.transporterId && Number(p.transport) > 0) {
+          const arr = purchasesByTransporterId.get(p.transporterId) ?? [];
+          arr.push(p);
+          purchasesByTransporterId.set(p.transporterId, arr);
+        }
+      }
+      const salesByTransporterId = new Map<string, typeof allSales>();
+      for (const s of allSales) {
+        if (s.transporterId && Number(s.transport) > 0) {
+          const arr = salesByTransporterId.get(s.transporterId) ?? [];
+          arr.push(s);
+          salesByTransporterId.set(s.transporterId, arr);
+        }
+      }
+
       const paymentsByPartyId = new Map<string, typeof allPayments>();
       for (const pay of allPayments) {
         const arr = paymentsByPartyId.get(pay.partyId) ?? [];
@@ -105,6 +123,23 @@ export const ledgerRouter = router({
                   t.baseAmount
                 )
               );
+            }
+            for (const pay of contactPayments) {
+              if (pay.direction === "Paid") {
+                totalPaidOrReceived = totalPaidOrReceived.plus(D(pay.amount));
+              }
+            }
+            direction = "Payable";
+          } else if (contact.type === "Transporter") {
+            // Transport costs from purchases where this transporter was assigned
+            const transporterPurchases = purchasesByTransporterId.get(contact.id) ?? [];
+            for (const p of transporterPurchases) {
+              totalBilled = totalBilled.plus(D(p.transport));
+            }
+            // Transport costs from sales where this transporter was assigned
+            const transporterSales = salesByTransporterId.get(contact.id) ?? [];
+            for (const s of transporterSales) {
+              totalBilled = totalBilled.plus(D(s.transport));
             }
             for (const pay of contactPayments) {
               if (pay.direction === "Paid") {
