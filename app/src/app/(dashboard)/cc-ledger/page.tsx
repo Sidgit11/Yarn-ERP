@@ -11,6 +11,7 @@ export default function CCLedgerPage() {
   const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.cc.list.useQuery();
+  const { data: dashData } = trpc.dashboard.getMetrics.useQuery();
 
   const deleteMutation = trpc.cc.delete.useMutation({
     onSuccess: () => {
@@ -69,7 +70,7 @@ export default function CCLedgerPage() {
         </div>
       </div>
 
-      {/* Utilization Bar */}
+      {/* Utilization Bar + Money Trail */}
       <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-4 mb-6">
         <div className="flex items-center justify-between mb-2">
           <p className="text-sm font-medium text-[#2C3E50]">Utilization</p>
@@ -77,19 +78,58 @@ export default function CCLedgerPage() {
             {utilizationPct.toFixed(1)}%
           </p>
         </div>
-        <div className="w-full bg-[#DEE2E6] rounded-full h-3">
-          <div
-            className={cn(
-              "h-3 rounded-full transition-all",
-              utilizationPct > 80
-                ? "bg-[#C0392B]"
-                : utilizationPct > 50
-                  ? "bg-[#E67E22]"
-                  : "bg-[#27AE60]"
-            )}
-            style={{ width: `${Math.min(100, utilizationPct)}%` }}
-          />
-        </div>
+
+        {/* Stacked bar showing where CC money is */}
+        {dashData?.cc.moneyTrail && currentBalance > 0 ? (() => {
+          const trail = dashData.cc.moneyTrail;
+          const total = currentBalance;
+          const segments = [
+            { label: "Stock", value: trail.stockAtCost, color: "bg-violet-500" },
+            { label: "Collection", value: trail.soldAtCost, color: "bg-blue-500" },
+            { label: "GST", value: trail.gstPaid, color: "bg-teal-500" },
+            { label: "Transport", value: trail.transport, color: "bg-orange-400" },
+            { label: "Advance", value: trail.overpaidToMills, color: "bg-gray-400" },
+          ].filter(s => s.value > 0);
+
+          return (
+            <>
+              <div className="w-full flex rounded-full h-4 overflow-hidden mb-3">
+                {segments.map((seg) => (
+                  <div
+                    key={seg.label}
+                    className={cn("h-4 transition-all", seg.color)}
+                    style={{ width: `${Math.max((seg.value / total) * 100, 1)}%` }}
+                    title={`${seg.label}: ${formatIndianCurrency(seg.value)} (${((seg.value / total) * 100).toFixed(0)}%)`}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {segments.map((seg) => (
+                  <div key={seg.label} className="flex items-center gap-1.5">
+                    <span className={cn("w-2.5 h-2.5 rounded-full flex-shrink-0", seg.color)} />
+                    <span className="text-[11px] text-[#6C757D]">{seg.label}</span>
+                    <span className="text-[11px] font-semibold text-[#2C3E50]">
+                      {formatIndianCurrency(seg.value)}
+                    </span>
+                    <span className="text-[10px] text-[#ADB5BD]">
+                      ({((seg.value / total) * 100).toFixed(0)}%)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          );
+        })() : (
+          <div className="w-full bg-[#DEE2E6] rounded-full h-4">
+            <div
+              className={cn(
+                "h-4 rounded-full transition-all",
+                utilizationPct > 80 ? "bg-[#C0392B]" : utilizationPct > 50 ? "bg-[#E67E22]" : "bg-[#27AE60]"
+              )}
+              style={{ width: `${Math.min(100, utilizationPct)}%` }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Loading Skeleton */}
