@@ -105,7 +105,7 @@ export default function SalesPage() {
             {summaryMetrics.totalSales} Sales
           </span>
           <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-[#EBF5FB] text-[#1B4F72] border border-[#AED6F1]">
-            {formatIndianCurrency(summaryMetrics.revenue)} Revenue
+            {formatIndianCurrency(summaryMetrics.revenue)} Revenue (excl GST)
           </span>
           <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-[#EBF5FB] text-[#1B4F72] border border-[#AED6F1]">
             {summaryMetrics.totalBags} bags
