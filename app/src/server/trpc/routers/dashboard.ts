@@ -280,6 +280,9 @@ export const dashboardRouter = router({
         totalReceivables: toMoney(totalReceivables),
         totalPayables: toMoney(Decimal_max(totalPayables, D(0))),
         brokerPending: toMoney(Decimal_max(brokerCommissionPending, D(0))),
+        expenses: toMoney(totalPurchaseTransport.plus(totalSaleTransport).plus(totalBrokerCommission)),
+        gstNet: toMoney(totalPurchaseGst.minus(totalSaleGst)), // positive = ITC sitting with govt
+        unrealizedProfit: toMoney(grossMargin),
         totalTransport: toMoney(totalPurchaseTransport.plus(totalSaleTransport)),
       },
       gst: {

@@ -319,16 +319,28 @@ export default function DashboardPage() {
         {/* Card 2: Where Is My Money? */}
         <DashboardCard title="Where Is My Money?" cardKey="money">
           <MetricRow label="Stock in Hand" value={formatIndianCurrency(money.cashInInventory)} isHero
-            explainer={{ title: "Stock in Hand", description: "Value of unsold yarn at purchase cost.", formula: "Total Purchase Base - COGS" }} />
-          <MetricRow label="They Owe You" value={formatIndianCurrency(money.totalReceivables)}
-            explainer={{ title: "They Owe You", description: "Unpaid buyer amounts.", formula: "Sale Total - Received - Payments" }} />
-          <MetricRow label="You Owe Them" value={formatIndianCurrency(money.totalPayables)}
-            explainer={{ title: "You Owe Them", description: "Unpaid supplier amounts.", formula: "Purchase Total - Paid - Payments" }} />
-          <MetricRow label="Broker Pending" value={formatIndianCurrency(money.brokerPending)}
-            explainer={{ title: "Broker Pending", description: "Unpaid broker commission.", formula: "Total Commission - Broker Payments" }} />
+            explainer={{ title: "Stock in Hand", description: "Value of unsold yarn sitting in your godown, at purchase cost.", formula: "Total Purchase Base - Cost of Goods Sold" }} />
           <Separator />
-          <MetricRow label="Transport Spent" value={formatIndianCurrency(money.totalTransport)}
-            explainer={{ title: "Transport", description: "Total transport costs across all transactions." }} />
+          <MetricRow label="Receivables" value={formatIndianCurrency(money.totalReceivables)}
+            explainer={{ title: "Receivables", description: "Total amount buyers owe you (incl GST). Check Ledger to see who owes what.", formula: "Sale Total (incl GST) - Received - Payments" }} />
+          {money.totalPayables > 0 && (
+            <MetricRow label="Payables" value={formatIndianCurrency(money.totalPayables)} isNegative
+              explainer={{ title: "Payables", description: "Amount you still owe to mills/suppliers.", formula: "Purchase Total - Paid - Payments" }} />
+          )}
+          <Separator />
+          <MetricRow label="Expenses" value={formatIndianCurrency(money.expenses)}
+            explainer={{ title: "Expenses", description: "Total transport + broker commission spent across all transactions. This money is spent and non-recoverable.", formula: "Transport (purchase + sale) + Broker Commission" }} />
+          {money.gstNet > 0 && (
+            <MetricRow label="GST with Govt (ITC)" value={formatIndianCurrency(money.gstNet)}
+              explainer={{ title: "GST with Govt", description: "Net GST you've paid more on purchases than collected on sales. This is refundable as Input Tax Credit.", formula: "Purchase GST - Sale GST" }} />
+          )}
+          {money.unrealizedProfit > 0 && (
+            <>
+              <Separator />
+              <MetricRow label="Unrealized Profit" value={formatIndianCurrency(money.unrealizedProfit)} isBold
+                explainer={{ title: "Unrealized Profit", description: "Your gross trading margin. This becomes real cash only when buyers pay you.", formula: "Sale Revenue - COGS - Transport - Broker Commission" }} />
+            </>
+          )}
           <div className="pt-3">
             <Link href="/ledger"
               className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
