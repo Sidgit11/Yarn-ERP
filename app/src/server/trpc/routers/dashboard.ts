@@ -160,17 +160,52 @@ export const dashboardRouter = router({
       }
     }
 
-    const pendingPurchasePayments = allPurchases.filter((p) => {
-      const t = computePurchaseTotals(p);
-      const totalPaid = D(p.amountPaid).plus(linkedPaymentsByTxn[p.displayId] ?? 0);
-      return totalPaid.lt(t.grandTotal);
-    }).length;
+    // Pending counts: purchases/sales where linked payments don't cover the full amount.
+    // We also distribute unlinked payments across the oldest unpaid transactions so the
+    // count stays consistent with the "You Owe Them" / "They Owe You" totals.
 
-    const pendingSaleCollections = allSales.filter((s) => {
+    // Purchase pending count
+    let unlinkedPaidPool = D(0);
+    for (const pay of allPayments) {
+      if (pay.direction === "Paid" && !pay.againstTxnId) {
+        unlinkedPaidPool = unlinkedPaidPool.plus(D(pay.amount));
+      }
+    }
+    // Sort purchases by date (oldest first) so unlinked payments settle oldest first
+    const sortedPurchases = [...allPurchases].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    let pendingPurchasePayments = 0;
+    for (const p of sortedPurchases) {
+      const t = computePurchaseTotals(p);
+      const linked = D(p.amountPaid).plus(linkedPaymentsByTxn[p.displayId] ?? 0);
+      let remaining = D(t.grandTotal).minus(linked);
+      if (remaining.gt(0) && unlinkedPaidPool.gt(0)) {
+        const apply = remaining.lt(unlinkedPaidPool) ? remaining : unlinkedPaidPool;
+        remaining = remaining.minus(apply);
+        unlinkedPaidPool = unlinkedPaidPool.minus(apply);
+      }
+      if (remaining.gt(0)) pendingPurchasePayments++;
+    }
+
+    // Sale pending count
+    let unlinkedReceivedPool = D(0);
+    for (const pay of allPayments) {
+      if (pay.direction === "Received" && !pay.againstTxnId) {
+        unlinkedReceivedPool = unlinkedReceivedPool.plus(D(pay.amount));
+      }
+    }
+    const sortedSales = [...allSales].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    let pendingSaleCollections = 0;
+    for (const s of sortedSales) {
       const t = computeSaleTotals(s);
-      const totalReceived = D(s.amountReceived).plus(linkedPaymentsByTxn[s.displayId] ?? 0);
-      return totalReceived.lt(t.totalInclGst);
-    }).length;
+      const linked = D(s.amountReceived).plus(linkedPaymentsByTxn[s.displayId] ?? 0);
+      let remaining = D(t.totalInclGst).minus(linked);
+      if (remaining.gt(0) && unlinkedReceivedPool.gt(0)) {
+        const apply = remaining.lt(unlinkedReceivedPool) ? remaining : unlinkedReceivedPool;
+        remaining = remaining.minus(apply);
+        unlinkedReceivedPool = unlinkedReceivedPool.minus(apply);
+      }
+      if (remaining.gt(0)) pendingSaleCollections++;
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
