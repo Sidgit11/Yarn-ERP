@@ -44,9 +44,11 @@ async function applySchema() {
     `ALTER TABLE purchases ADD COLUMN IF NOT EXISTS financial_year TEXT`,
     `CREATE INDEX IF NOT EXISTS idx_purchases_transporter ON purchases (transporter_id)`,
 
-    // Sales: transporter, invoice ref, future fields
+    // Sales: transporter, invoice ref, payment terms, future fields
     `ALTER TABLE sales ADD COLUMN IF NOT EXISTS transporter_id UUID REFERENCES contacts(id)`,
     `ALTER TABLE sales ADD COLUMN IF NOT EXISTS our_invoice_no TEXT`,
+    `ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_term_type TEXT`,
+    `ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_term_days INTEGER`,
     `ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date DATE`,
     `ALTER TABLE sales ADD COLUMN IF NOT EXISTS financial_year TEXT`,
     `CREATE INDEX IF NOT EXISTS idx_sales_transporter ON sales (transporter_id)`,

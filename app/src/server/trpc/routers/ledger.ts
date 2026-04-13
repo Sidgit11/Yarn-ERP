@@ -129,7 +129,8 @@ export const ledgerRouter = router({
           } else if (contact.type === "Buyer" && netBalance.gt(0)) {
             const contactSales = salesByBuyerId.get(contact.id) ?? [];
             for (const s of contactSales) {
-              const d = new Date(s.date);
+              // Use dueDate if available, otherwise fall back to sale date
+              const d = s.dueDate ? new Date(s.dueDate) : new Date(s.date);
               if (!oldestUnpaidDate || d < oldestUnpaidDate) oldestUnpaidDate = d;
             }
           }
@@ -141,6 +142,26 @@ export const ledgerRouter = router({
               )
             : null;
 
+          // Overdue detection for buyers with due dates
+          let isOverdue = false;
+          let daysOverdue: number | null = null;
+          if (contact.type === "Buyer" && netBalance.gt(0)) {
+            const contactSales = salesByBuyerId.get(contact.id) ?? [];
+            for (const s of contactSales) {
+              if (s.dueDate) {
+                const due = new Date(s.dueDate);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                due.setHours(0, 0, 0, 0);
+                const diff = Math.ceil((today.getTime() - due.getTime()) / 86400000);
+                if (diff > 0 && (daysOverdue === null || diff > daysOverdue)) {
+                  daysOverdue = diff;
+                  isOverdue = true;
+                }
+              }
+            }
+          }
+
           return {
             id: contact.id,
             name: contact.name,
@@ -151,6 +172,8 @@ export const ledgerRouter = router({
             direction,
             status,
             daysSinceOldest,
+            isOverdue,
+            daysOverdue,
           };
         })
         .sort((a, b) => Math.abs(b.netBalance) - Math.abs(a.netBalance));

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { AlertTriangle } from "lucide-react";
 import { cn, formatIndianCurrency, formatDate } from "@/lib/utils";
 
 type ContactType = "Mill" | "Buyer" | "Broker";
@@ -166,7 +167,8 @@ export default function LedgerPage() {
             <div
               className={cn(
                 "bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border p-4 hover:shadow-md transition-shadow cursor-pointer",
-                selectedPartyId === party.id ? "border-[#1B4F72] ring-1 ring-[#1B4F72]" : "border-gray-200"
+                selectedPartyId === party.id ? "border-[#1B4F72] ring-1 ring-[#1B4F72]" : "border-gray-200",
+                party.isOverdue && "border-l-4 border-l-red-400"
               )}
               onClick={() => setSelectedPartyId(selectedPartyId === party.id ? null : party.id)}
             >
@@ -207,7 +209,15 @@ export default function LedgerPage() {
                         : party.direction}
                     </span>
                   )}
-                  {party.daysSinceOldest !== null && party.daysSinceOldest > 30 && party.netBalance > 0 && (
+                  {party.isOverdue && party.daysOverdue !== null && (
+                    <div className="flex items-center gap-1 mt-1.5 bg-red-100 border border-red-200 rounded-lg px-2 py-1">
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-700" />
+                      <span className="text-xs text-red-700 font-semibold">
+                        Overdue by {party.daysOverdue} days
+                      </span>
+                    </div>
+                  )}
+                  {!party.isOverdue && party.daysSinceOldest !== null && party.daysSinceOldest > 30 && party.netBalance > 0 && (
                     <div className="flex items-center gap-1 mt-1.5 bg-[#FEF9E7] border border-[#F1C40F] rounded-lg px-2 py-1">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-[#B7950B]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
                       <span className="text-xs text-[#B7950B] font-medium">

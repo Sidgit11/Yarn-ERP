@@ -7,7 +7,7 @@ import { formatIndianCurrency } from "@/lib/utils";
 import { MetricExplainer } from "@/components/shared/metric-explainer";
 import {
   TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronUp,
-  Landmark, Wallet, Receipt, BarChart3, Package, Activity,
+  Landmark, Wallet, Receipt, BarChart3, Package, Activity, AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -406,6 +406,18 @@ export default function DashboardPage() {
               <p className="text-xs text-gray-400 font-medium mb-1">Pending Coll</p>
               <p className="text-[32px] font-bold text-orange-600 leading-10 tracking-tight tabular-nums">{stats.pendingCollections}</p>
             </div>
+            {stats.overdueCollections > 0 && (
+              <>
+                <div />
+                <div>
+                  <p className="text-xs text-red-500 font-medium mb-1 flex items-center gap-1">
+                    <AlertTriangle size={12} />
+                    Overdue
+                  </p>
+                  <p className="text-[32px] font-bold text-red-600 leading-10 tracking-tight tabular-nums">{stats.overdueCollections}</p>
+                </div>
+              </>
+            )}
           </div>
         </DashboardCard>
       </div>

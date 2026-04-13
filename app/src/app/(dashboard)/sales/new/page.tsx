@@ -31,6 +31,8 @@ export default function NewSalePage() {
   const [transport, setTransport] = useState<number | "">("");
   const [ourInvoiceNo, setOurInvoiceNo] = useState("");
   const [notes, setNotes] = useState("");
+  const [paymentTermType, setPaymentTermType] = useState<"" | "advance" | "days">("");
+  const [paymentTermDays, setPaymentTermDays] = useState<number | "">("");
   const [transporterId, setTransporterId] = useState("");
   const [transportOverridden, setTransportOverridden] = useState(false);
 
@@ -60,6 +62,8 @@ export default function NewSalePage() {
       setTransport(parseFloat(existingData.transport));
       setTransporterId(existingData.transporterId || "");
       setOurInvoiceNo(existingData.ourInvoiceNo || "");
+      setPaymentTermType((existingData.paymentTermType as "" | "advance" | "days") || "");
+      setPaymentTermDays(existingData.paymentTermDays ? existingData.paymentTermDays : "");
       if (existingData.transporterId) {
         setTransportOverridden(true); // preserve user's saved transport value in edit mode
       }
@@ -186,6 +190,8 @@ export default function NewSalePage() {
       amountReceived: "0",
       transporterId: transporterId || undefined,
       ourInvoiceNo: ourInvoiceNo || undefined,
+      paymentTermType: paymentTermType || undefined,
+      paymentTermDays: paymentTermType === "days" && typeof paymentTermDays === "number" ? paymentTermDays : undefined,
     };
     if (isEditing) {
       updateSale.mutate({ id: editId!, ...fields });
@@ -612,6 +618,67 @@ export default function NewSalePage() {
             placeholder="e.g. INV-2024-001"
             className={inputClass}
           />
+        </div>
+
+        {/* Payment Terms */}
+        <div>
+          <label className={labelClass}>
+            Payment Terms <span className="text-[#ADB5BD] font-normal">(optional)</span>
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentTermType(paymentTermType === "advance" ? "" : "advance");
+                setPaymentTermDays("");
+              }}
+              className={`flex-1 min-h-[48px] px-3 py-3 rounded-xl text-base font-semibold border transition-colors ${
+                paymentTermType === "advance"
+                  ? "border-[#2980B9] bg-[#2980B9] text-white"
+                  : "border-[#DEE2E6] text-[#6C757D] hover:border-[#ADB5BD]"
+              }`}
+            >
+              Advance
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentTermType(paymentTermType === "days" ? "" : "days")}
+              className={`flex-1 min-h-[48px] px-3 py-3 rounded-xl text-base font-semibold border transition-colors ${
+                paymentTermType === "days"
+                  ? "border-[#2980B9] bg-[#2980B9] text-white"
+                  : "border-[#DEE2E6] text-[#6C757D] hover:border-[#ADB5BD]"
+              }`}
+            >
+              X Days Credit
+            </button>
+          </div>
+          {paymentTermType === "days" && (
+            <div className="mt-3">
+              <label className={labelClass}>Days</label>
+              <input
+                type="number"
+                value={paymentTermDays}
+                onChange={(e) => setPaymentTermDays(e.target.value ? parseInt(e.target.value, 10) : "")}
+                min={1}
+                placeholder="e.g. 30"
+                className={inputClass}
+              />
+            </div>
+          )}
+          {paymentTermType && (
+            <p className="mt-2 text-sm text-[#6C757D]">
+              Due:{" "}
+              {paymentTermType === "advance"
+                ? "Immediate (same day as sale)"
+                : typeof paymentTermDays === "number" && paymentTermDays > 0 && date
+                  ? (() => {
+                      const d = new Date(date);
+                      d.setDate(d.getDate() + paymentTermDays);
+                      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+                    })()
+                  : "Enter days to see due date"}
+            </p>
+          )}
         </div>
 
         {/* Notes */}

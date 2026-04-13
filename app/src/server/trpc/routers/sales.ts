@@ -126,6 +126,18 @@ function enrichSale(
     linkedPayments
   );
 
+  // Overdue calculation
+  let daysUntilDue: number | null = null;
+  let isOverdue = false;
+  if (s.dueDate && balanceReceivable > 0) {
+    const due = new Date(s.dueDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    due.setHours(0, 0, 0, 0);
+    daysUntilDue = Math.ceil((due.getTime() - today.getTime()) / 86400000);
+    isOverdue = daysUntilDue < 0;
+  }
+
   return {
     ...s,
     productName: product ? productFullName(product) : "",
@@ -140,6 +152,8 @@ function enrichSale(
     linkedPayments,
     balanceReceivable,
     status,
+    daysUntilDue,
+    isOverdue,
   };
 }
 
@@ -236,6 +250,8 @@ export const salesRouter = router({
         transport: monetaryString.default("0"),
         amountReceived: monetaryString.default("0"),
         ourInvoiceNo: z.string().optional(),
+        paymentTermType: z.enum(["advance", "days"]).optional(),
+        paymentTermDays: z.number().int().positive().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -271,6 +287,11 @@ export const salesRouter = router({
             transport: input.transport,
             amountReceived: input.amountReceived,
             ourInvoiceNo: input.ourInvoiceNo || null,
+            paymentTermType: input.paymentTermType || null,
+            paymentTermDays: input.paymentTermDays ?? null,
+            dueDate: input.paymentTermType === "days" && input.paymentTermDays
+              ? new Date(new Date(input.date).getTime() + input.paymentTermDays * 86400000).toISOString().split("T")[0]
+              : input.paymentTermType === "advance" ? input.date : null,
           })
           .returning();
 
@@ -295,6 +316,8 @@ export const salesRouter = router({
         transport: monetaryString.default("0"),
         amountReceived: monetaryString.default("0"),
         ourInvoiceNo: z.string().optional(),
+        paymentTermType: z.enum(["advance", "days"]).optional(),
+        paymentTermDays: z.number().int().positive().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -333,6 +356,11 @@ export const salesRouter = router({
           transport: input.transport,
           amountReceived: input.amountReceived,
           ourInvoiceNo: input.ourInvoiceNo || null,
+          paymentTermType: input.paymentTermType || null,
+          paymentTermDays: input.paymentTermDays ?? null,
+          dueDate: input.paymentTermType === "days" && input.paymentTermDays
+            ? new Date(new Date(input.date).getTime() + input.paymentTermDays * 86400000).toISOString().split("T")[0]
+            : input.paymentTermType === "advance" ? input.date : null,
         })
         .where(
           and(eq(sales.id, input.id), eq(sales.tenantId, ctx.tenantId))

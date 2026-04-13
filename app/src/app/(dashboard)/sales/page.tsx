@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -15,12 +15,16 @@ export default function SalesPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
-  const [filter, setFilter] = useState<"All" | "Received" | "Partial" | "Pending">("All");
+  const [filter, setFilter] = useState<"All" | "Received" | "Partial" | "Pending" | "Overdue">("All");
 
   const filteredList = useMemo(() => {
     let items = [...(salesList ?? [])];
 
-    if (filter !== "All") items = items.filter((s) => s.status === filter);
+    if (filter === "Overdue") {
+      items = items.filter((s) => s.isOverdue);
+    } else if (filter !== "All") {
+      items = items.filter((s) => s.status === filter);
+    }
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -104,7 +108,7 @@ export default function SalesPage() {
             </button>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {(["All", "Received", "Partial", "Pending"] as const).map((chip) => (
+            {(["All", "Received", "Partial", "Pending", "Overdue"] as const).map((chip) => (
               <button
                 key={chip}
                 onClick={() => setFilter(chip)}
@@ -230,6 +234,29 @@ export default function SalesPage() {
                   </span>
                 </div>
               )}
+
+              {/* Row 5: overdue / due indicator */}
+              {s.isOverdue ? (
+                <div className="mt-1.5">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+                    <AlertTriangle size={12} />
+                    Overdue by {Math.abs(s.daysUntilDue!)} days
+                  </span>
+                </div>
+              ) : s.daysUntilDue !== null && s.daysUntilDue >= 0 && s.daysUntilDue <= 3 && s.balanceReceivable > 0 ? (
+                <div className="mt-1.5">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                    <Clock size={12} />
+                    Due in {s.daysUntilDue} days
+                  </span>
+                </div>
+              ) : s.daysUntilDue !== null && s.daysUntilDue > 3 && s.balanceReceivable > 0 ? (
+                <div className="mt-1.5">
+                  <span className="text-[#6C757D] text-xs">
+                    Due in {s.daysUntilDue} days
+                  </span>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

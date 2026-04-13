@@ -172,6 +172,18 @@ export const dashboardRouter = router({
       return totalReceived.lt(t.totalInclGst);
     }).length;
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const overdueCollections = allSales.filter((s) => {
+      if (!s.dueDate) return false;
+      const t = computeSaleTotals(s);
+      const totalReceived = D(s.amountReceived).plus(linkedPaymentsByTxn[s.displayId] ?? 0);
+      if (!totalReceived.lt(t.totalInclGst)) return false; // already paid
+      const due = new Date(s.dueDate);
+      due.setHours(0, 0, 0, 0);
+      return due < today;
+    }).length;
+
     const cashInInventory = totalPurchaseBase.minus(totalCogs);
     const netGst = totalSaleGst.minus(totalPurchaseGst);
     const itcAvailable = netGst.lt(0) ? netGst.abs() : D(0);
@@ -248,6 +260,7 @@ export const dashboardRouter = router({
         totalSales: allSales.length,
         pendingPayments: pendingPurchasePayments,
         pendingCollections: pendingSaleCollections,
+        overdueCollections,
       },
     };
   }),

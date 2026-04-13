@@ -154,7 +154,9 @@ export const sales = pgTable("sales", {
   transport: numeric("transport", { precision: 14, scale: 2 }).default("0.00").notNull(),
   amountReceived: numeric("amount_received", { precision: 14, scale: 2 }).default("0.00").notNull(),
   ourInvoiceNo: text("our_invoice_no"),
-  dueDate: date("due_date"),
+  paymentTermType: text("payment_term_type"), // "advance" | "days"
+  paymentTermDays: integer("payment_term_days"), // e.g. 15, 30, 45
+  dueDate: date("due_date"), // auto-computed: sale date + paymentTermDays
   financialYear: text("financial_year"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
