@@ -84,29 +84,10 @@ export const ccRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Transaction: read last balance + insert atomically
+      // Transaction: insert entry then recalculate ALL running balances
+      // This handles backdated entries correctly (entries inserted out of date order)
       return await ctx.db.transaction(async (tx: any) => {
-        const lastEntry = await tx
-          .select()
-          .from(ccEntries)
-          .where(eq(ccEntries.tenantId, ctx.tenantId))
-          .orderBy(desc(ccEntries.date), desc(ccEntries.createdAt))
-          .limit(1);
-
-        const prevBalance = D(lastEntry[0]?.runningBalance ?? "0");
-        const amount = D(input.amount);
-        const newBalance =
-          input.event === "Draw"
-            ? prevBalance.plus(amount)
-            : prevBalance.minus(amount);
-
-        if (newBalance.lt(0)) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Repayment exceeds current balance",
-          });
-        }
-
+        // Insert with placeholder balance (will be recalculated below)
         const result = await tx
           .insert(ccEntries)
           .values({
@@ -114,12 +95,48 @@ export const ccRouter = router({
             date: input.date,
             event: input.event,
             amount: input.amount,
-            runningBalance: newBalance.toFixed(2),
+            runningBalance: "0",
             notes: input.notes || null,
           })
           .returning();
 
-        return result[0];
+        // Recalculate ALL running balances in chronological order
+        const allEntries = await tx
+          .select()
+          .from(ccEntries)
+          .where(eq(ccEntries.tenantId, ctx.tenantId))
+          .orderBy(asc(ccEntries.date), asc(ccEntries.createdAt));
+
+        let balance = D("0");
+        for (const entry of allEntries) {
+          const amt = D(entry.amount);
+          balance =
+            entry.event === "Draw"
+              ? balance.plus(amt)
+              : balance.minus(amt);
+
+          if (balance.lt(0)) {
+            // Rollback: this repayment would make balance negative
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Repayment exceeds balance at that point in time",
+            });
+          }
+
+          await tx
+            .update(ccEntries)
+            .set({ runningBalance: balance.toFixed(2) })
+            .where(eq(ccEntries.id, entry.id));
+        }
+
+        // Return the inserted entry with its correct balance
+        const updated = await tx
+          .select()
+          .from(ccEntries)
+          .where(eq(ccEntries.id, result[0].id))
+          .then((r: any[]) => r[0]);
+
+        return updated;
       });
     }),
 
