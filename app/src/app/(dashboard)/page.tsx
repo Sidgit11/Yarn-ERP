@@ -277,6 +277,43 @@ export default function DashboardPage() {
               <MetricExplainer title="Interest Difference" description="Gap between calculated and actual interest." formula="Calculated - Actual" />
             </div>
           </div>
+          {/* Money Trail */}
+          {cc.outstanding > 0 && cc.moneyTrail && (() => {
+            const trail = cc.moneyTrail;
+            const items = [
+              { label: "Stock in hand", value: trail.stockAtCost, color: "bg-violet-500" },
+              { label: "Awaiting collection", value: trail.soldAtCost, color: "bg-blue-500" },
+              { label: "GST paid (ITC)", value: trail.gstPaid, color: "bg-teal-500" },
+              { label: "Transport", value: trail.transport, color: "bg-orange-500" },
+              { label: "Advance to mills", value: trail.overpaidToMills, color: "bg-gray-400" },
+            ].filter((i) => i.value > 0);
+            if (items.length === 0) return null;
+            return (
+              <>
+                <Separator />
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-1 mb-1.5">
+                  Where is this money?
+                </p>
+                <div className="space-y-1">
+                  {items.map((item) => {
+                    const pct = Math.round((item.value / cc.outstanding) * 100);
+                    return (
+                      <div key={item.label} className="flex items-center justify-between text-[12px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${item.color} flex-shrink-0`} />
+                          <span className="text-gray-500">{item.label}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 tabular-nums flex-shrink-0">
+                          <span className="text-gray-700 font-medium">{formatIndianCurrency(item.value)}</span>
+                          <span className="text-gray-400 text-[11px]">({pct}%)</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
         </DashboardCard>
 
         {/* Card 2: Where Is My Money? */}

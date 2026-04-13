@@ -252,6 +252,15 @@ export const dashboardRouter = router({
       };
     }).filter((i) => i.bagsInHand > 0);
 
+    // ── CC Money Trail: where is the CC money sitting? ─────────────────
+    const ccMoneyTrail = {
+      stockAtCost: toMoney(cashInInventory),
+      soldAtCost: toMoney(totalCogs),
+      gstPaid: toMoney(totalPurchaseGst),
+      transport: toMoney(totalPurchaseTransport),
+      overpaidToMills: toMoney(Decimal_max(totalPaymentsPaid.minus(totalBrokerPaid).minus(totalPurchaseGrand), D(0))),
+    };
+
     console.log(`[dashboard] Logic/computation — ${(performance.now() - t2).toFixed(1)}ms`);
     console.log(`[dashboard] Total — ${(performance.now() - t0).toFixed(1)}ms`);
 
@@ -264,6 +273,7 @@ export const dashboardRouter = router({
         calculatedInterest: calcInterest,
         actualInterest: toMoney(D(actualInterest)),
         difference: toMoney(D(calcInterest).minus(actualInterest)),
+        moneyTrail: ccMoneyTrail,
       },
       money: {
         cashInInventory: toMoney(cashInInventory),

@@ -45,6 +45,20 @@ export default function SalesPage() {
     return items;
   }, [salesList, search, sortBy, sortDir, filter]);
 
+  const summaryMetrics = useMemo(() => {
+    if (!salesList || salesList.length === 0) return null;
+    const totalSales = salesList.length;
+    const revenue = salesList.reduce((sum, s) => sum + Number(s.baseAmount), 0);
+    const totalBags = salesList.reduce((sum, s) => sum + Number(s.qtyBags), 0);
+    const totalMargin = salesList.reduce((sum, s) => sum + Number(s.grossMargin), 0);
+    const marginPct = revenue > 0 ? (totalMargin / revenue) * 100 : 0;
+    const receivable = salesList.reduce(
+      (sum, s) => sum + (Number(s.balanceReceivable) > 0 ? Number(s.balanceReceivable) : 0),
+      0
+    );
+    return { totalSales, revenue, totalBags, totalMargin, marginPct, receivable };
+  }, [salesList]);
+
   const deleteMutation = trpc.sales.delete.useMutation({
     onSuccess: () => {
       utils.sales.list.invalidate();
@@ -83,6 +97,33 @@ export default function SalesPage() {
           + New Sale
         </Link>
       </div>
+
+      {/* Summary Metrics Strip */}
+      {!isLoading && summaryMetrics && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-[#EBF5FB] text-[#1B4F72] border border-[#AED6F1]">
+            {summaryMetrics.totalSales} Sales
+          </span>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-[#EBF5FB] text-[#1B4F72] border border-[#AED6F1]">
+            {formatIndianCurrency(summaryMetrics.revenue)} Revenue
+          </span>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-[#EBF5FB] text-[#1B4F72] border border-[#AED6F1]">
+            {summaryMetrics.totalBags} bags
+          </span>
+          <span
+            className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold border ${
+              summaryMetrics.totalMargin >= 0
+                ? "bg-[#D5F5E3] text-[#1E8449] border-[#27AE60]"
+                : "bg-[#FADBD8] text-[#922B21] border-[#E74C3C]"
+            }`}
+          >
+            {formatIndianCurrency(summaryMetrics.totalMargin)} Margin ({summaryMetrics.marginPct.toFixed(1)}%)
+          </span>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-[#EBF5FB] text-[#1B4F72] border border-[#AED6F1]">
+            {formatIndianCurrency(summaryMetrics.receivable)} Receivable
+          </span>
+        </div>
+      )}
 
       {/* Search, Filter, Sort Toolbar */}
       {!isLoading && salesList && salesList.length > 0 && (

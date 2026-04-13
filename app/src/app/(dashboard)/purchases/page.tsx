@@ -17,6 +17,16 @@ export default function PurchasesPage() {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [filter, setFilter] = useState<"All" | "Paid" | "Partial" | "Pending">("All");
 
+  const summaryMetrics = useMemo(() => {
+    if (!purchasesList || purchasesList.length === 0) return null;
+    const totalPurchases = purchasesList.length;
+    const totalValue = purchasesList.reduce((sum, p) => sum + Number(p.grandTotal), 0);
+    const totalBags = purchasesList.reduce((sum, p) => sum + Number(p.qtyBags), 0);
+    const totalPaid = purchasesList.reduce((sum, p) => sum + Number(p.linkedPayments), 0);
+    const balanceDue = purchasesList.reduce((sum, p) => sum + (Number(p.balanceDue) > 0 ? Number(p.balanceDue) : 0), 0);
+    return { totalPurchases, totalValue, totalBags, totalPaid, balanceDue };
+  }, [purchasesList]);
+
   const filteredList = useMemo(() => {
     let items = [...(purchasesList ?? [])];
 
@@ -79,6 +89,27 @@ export default function PurchasesPage() {
           + New Purchase
         </Link>
       </div>
+
+      {/* Summary Metrics Strip */}
+      {summaryMetrics && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {[
+            { label: "Total Purchases", value: `${summaryMetrics.totalPurchases}` },
+            { label: "Total Value", value: formatIndianCurrency(summaryMetrics.totalValue) },
+            { label: "Quantity", value: `${summaryMetrics.totalBags} bags` },
+            { label: "Paid", value: formatIndianCurrency(summaryMetrics.totalPaid) },
+            { label: "Balance Due", value: formatIndianCurrency(summaryMetrics.balanceDue) },
+          ].map((m) => (
+            <div
+              key={m.label}
+              className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 flex flex-col"
+            >
+              <span className="text-[11px] text-[#6C757D] leading-tight">{m.label}</span>
+              <span className="text-sm font-semibold text-[#2C3E50] leading-tight">{m.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Search, Filter, Sort Toolbar */}
       {!isLoading && purchasesList && purchasesList.length > 0 && (
