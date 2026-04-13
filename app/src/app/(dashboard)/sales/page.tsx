@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -11,6 +11,35 @@ export default function SalesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const utils = trpc.useUtils();
   const { data: salesList, isLoading } = trpc.sales.list.useQuery();
+
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "amount">("date");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [filter, setFilter] = useState<"All" | "Received" | "Partial" | "Pending">("All");
+
+  const filteredList = useMemo(() => {
+    let items = [...(salesList ?? [])];
+
+    if (filter !== "All") items = items.filter((s) => s.status === filter);
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      items = items.filter(
+        (s) =>
+          s.displayId.toLowerCase().includes(q) ||
+          s.productName.toLowerCase().includes(q) ||
+          s.buyerName.toLowerCase().includes(q)
+      );
+    }
+
+    items.sort((a, b) => {
+      const valA = sortBy === "date" ? new Date(a.date).getTime() : Number(a.baseAmount);
+      const valB = sortBy === "date" ? new Date(b.date).getTime() : Number(b.baseAmount);
+      return sortDir === "desc" ? valB - valA : valA - valB;
+    });
+
+    return items;
+  }, [salesList, search, sortBy, sortDir, filter]);
 
   const deleteMutation = trpc.sales.delete.useMutation({
     onSuccess: () => {
@@ -51,6 +80,47 @@ export default function SalesPage() {
         </Link>
       </div>
 
+      {/* Search, Filter, Sort Toolbar */}
+      {!isLoading && salesList && salesList.length > 0 && (
+        <div className="mb-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by ID, product, buyer..."
+              className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#1B4F72]/20 focus:border-[#1B4F72]"
+            />
+            <button
+              onClick={() => {
+                if (sortBy === "date" && sortDir === "desc") setSortDir("asc");
+                else if (sortBy === "date" && sortDir === "asc") { setSortBy("amount"); setSortDir("desc"); }
+                else if (sortBy === "amount" && sortDir === "desc") setSortDir("asc");
+                else { setSortBy("date"); setSortDir("desc"); }
+              }}
+              className="shrink-0 px-3 py-2 text-xs font-medium text-[#6C757D] bg-[#F8F9FA] border border-gray-200 rounded-xl hover:bg-gray-100 transition-colors whitespace-nowrap"
+            >
+              Sort: {sortBy === "date" ? "Date" : "Amount"} {sortDir === "desc" ? "\u2193" : "\u2191"}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {(["All", "Received", "Partial", "Pending"] as const).map((chip) => (
+              <button
+                key={chip}
+                onClick={() => setFilter(chip)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  filter === chip
+                    ? "bg-[#1B4F72] text-white border-[#1B4F72]"
+                    : "bg-white text-[#6C757D] border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
@@ -89,9 +159,13 @@ export default function SalesPage() {
             + Add First Sale
           </Link>
         </div>
+      ) : filteredList.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-8 text-center">
+          <p className="text-[#6C757D] text-sm">No matching results</p>
+        </div>
       ) : (
         <div className="space-y-3">
-          {salesList.map((s) => (
+          {filteredList.map((s) => (
             <div
               key={s.id}
               className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-4 hover:shadow-md transition-shadow"

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { cn, parseIndianAmount, formatIndianCurrency } from "@/lib/utils";
+import { cn, parseIndianAmount, formatIndianCurrency, formatDate } from "@/lib/utils";
 import { PAYMENT_MODES } from "@/lib/constants";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -77,6 +77,7 @@ export default function NewPaymentPage() {
   }, [existingPayment]);
 
   const { data: contactsList } = trpc.contacts.list.useQuery();
+  const { data: allPayments } = trpc.payments.list.useQuery();
 
   const { data: openTxns } = trpc.payments.openTransactions.useQuery(
     { partyId: form.partyId },
@@ -85,6 +86,9 @@ export default function NewPaymentPage() {
 
   // Smart direction: auto-set based on party type
   const selectedParty = contactsList?.find((c) => c.id === form.partyId);
+  const recentPartyPayments = (allPayments ?? [])
+    .filter((p) => p.partyId === form.partyId)
+    .slice(0, 3);
   useEffect(() => {
     if (selectedParty) {
       if (selectedParty.type === "Mill" || selectedParty.type === "Broker") {
@@ -306,6 +310,30 @@ export default function NewPaymentPage() {
                 ))}
             </select>
           </div>
+
+          {/* Recent payments for selected party */}
+          {form.partyId && recentPartyPayments.length > 0 && (
+            <div className="bg-[#F8F9FA] rounded-xl px-4 py-3">
+              <p className="text-xs font-medium text-[#6C757D] mb-2">Recent payments</p>
+              <div className="space-y-1">
+                {recentPartyPayments.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 text-xs text-[#2C3E50]">
+                    <span className="text-[#6C757D] w-16 shrink-0">{formatDate(p.date)}</span>
+                    <span className={cn(
+                      "font-medium w-24 shrink-0 text-right",
+                      p.direction === "Paid" ? "text-[#922B21]" : "text-[#1E8449]"
+                    )}>
+                      {formatIndianCurrency(p.amount)}
+                    </span>
+                    <span className="text-[#6C757D] w-10 shrink-0">{p.mode}</span>
+                    {p.againstTxnId && (
+                      <span className="text-[#ADB5BD]">Against: {p.againstTxnId}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Direction */}
           <div>
