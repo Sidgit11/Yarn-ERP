@@ -50,11 +50,11 @@ function MetricRow({
   suffix?: string;
 }) {
   return (
-    <div className={`flex items-center justify-between py-1.5 ${isBold || isHero ? "font-semibold" : ""}`}>
-      <span className={`text-[13px] min-w-0 truncate ${isBold || isHero ? "text-gray-800" : "text-gray-500"}`}>
+    <div className={`flex items-start justify-between py-1.5 gap-3 ${isBold || isHero ? "font-semibold" : ""}`}>
+      <span className={`text-[13px] ${isBold || isHero ? "text-gray-800" : "text-gray-500"}`}>
         {label}
       </span>
-      <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+      <div className="flex items-center gap-1.5 flex-shrink-0">
         <span
           className={`whitespace-nowrap tabular-nums ${
             isHero ? "text-[32px] font-bold leading-10 tracking-tight" : "text-[13px] font-medium"
