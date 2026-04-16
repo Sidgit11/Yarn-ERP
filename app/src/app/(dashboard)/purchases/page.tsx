@@ -16,7 +16,7 @@ export default function PurchasesPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
-  const [filter, setFilter] = useState<"All" | "Paid" | "Partial" | "Pending">("All");
+  const [filter, setFilter] = useState<"All" | "Paid" | "Overpaid" | "Partial" | "Pending">("All");
 
   const summaryMetrics = useMemo(() => {
     if (!purchasesList || purchasesList.length === 0) return null;
@@ -67,9 +67,11 @@ export default function PurchasesPage() {
     const config =
       status === "Paid"
         ? { bg: "bg-[#D5F5E3]", text: "text-[#1E8449]", border: "border-[#27AE60]", label: "Paid" }
-        : status === "Partial"
-          ? { bg: "bg-[#FEF9E7]", text: "text-[#B7950B]", border: "border-[#F1C40F]", label: "Partial" }
-          : { bg: "bg-[#FADBD8]", text: "text-[#922B21]", border: "border-[#E74C3C]", label: "Pending" };
+        : status === "Overpaid"
+          ? { bg: "bg-[#EBF5FB]", text: "text-[#2980B9]", border: "border-[#2980B9]", label: "Overpaid" }
+          : status === "Partial"
+            ? { bg: "bg-[#FEF9E7]", text: "text-[#B7950B]", border: "border-[#F1C40F]", label: "Partial" }
+            : { bg: "bg-[#FADBD8]", text: "text-[#922B21]", border: "border-[#E74C3C]", label: "Pending" };
     return (
       <span
         className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${config.bg} ${config.text} ${config.border}`}
@@ -136,7 +138,7 @@ export default function PurchasesPage() {
             </button>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {(["All", "Paid", "Partial", "Pending"] as const).map((chip) => (
+            {(["All", "Paid", "Overpaid", "Partial", "Pending"] as const).map((chip) => (
               <button
                 key={chip}
                 onClick={() => setFilter(chip)}
@@ -323,9 +325,11 @@ export default function PurchasesPage() {
                       <span className="text-[#2C3E50]">{formatIndianCurrency(p.linkedPayments)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#6C757D]">Balance Due</span>
+                      <span className="text-[#6C757D]">{Number(p.balanceDue) < 0 ? "Overpaid by" : "Balance Due"}</span>
                       {Number(p.balanceDue) > 0 ? (
                         <span className="text-[#922B21] font-medium">{formatIndianCurrency(p.balanceDue)}</span>
+                      ) : Number(p.balanceDue) < 0 ? (
+                        <span className="text-[#2980B9] font-medium">{formatIndianCurrency(Math.abs(p.balanceDue))}</span>
                       ) : (
                         <span className="text-[#1E8449] font-medium">Fully Paid</span>
                       )}

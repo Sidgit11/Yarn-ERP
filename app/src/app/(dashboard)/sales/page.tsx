@@ -75,9 +75,11 @@ export default function SalesPage() {
     const config =
       status === "Received"
         ? { bg: "bg-[#D5F5E3]", text: "text-[#1E8449]", border: "border-[#27AE60]", label: "Received" }
-        : status === "Partial"
-          ? { bg: "bg-[#FEF9E7]", text: "text-[#B7950B]", border: "border-[#F1C40F]", label: "Partial" }
-          : { bg: "bg-[#FADBD8]", text: "text-[#922B21]", border: "border-[#E74C3C]", label: "Pending" };
+        : status === "Overpaid"
+          ? { bg: "bg-[#EBF5FB]", text: "text-[#2980B9]", border: "border-[#2980B9]", label: "Overpaid" }
+          : status === "Partial"
+            ? { bg: "bg-[#FEF9E7]", text: "text-[#B7950B]", border: "border-[#F1C40F]", label: "Partial" }
+            : { bg: "bg-[#FADBD8]", text: "text-[#922B21]", border: "border-[#E74C3C]", label: "Pending" };
     return (
       <span
         className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${config.bg} ${config.text} ${config.border}`}

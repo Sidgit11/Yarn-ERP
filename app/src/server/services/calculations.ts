@@ -104,7 +104,7 @@ export function computeSaleTotals(row: {
 // Balance & status
 // ────────────────────────────────────────────────────────────────────────────
 
-export type TxnStatus = "Paid" | "Partial" | "Pending" | "Received";
+export type TxnStatus = "Paid" | "Overpaid" | "Partial" | "Pending" | "Received";
 
 /** Compute balance due for a purchase. */
 export function computePurchaseBalance(
@@ -115,7 +115,7 @@ export function computePurchaseBalance(
   const bal = D(grandTotal).minus(D(amountPaid)).minus(D(linkedPayments));
   const balanceDue = toMoney(bal);
   const status: TxnStatus =
-    bal.lte(0) ? "Paid" : bal.lt(D(grandTotal)) ? "Partial" : "Pending";
+    bal.lt(0) ? "Overpaid" : bal.eq(0) ? "Paid" : bal.lt(D(grandTotal)) ? "Partial" : "Pending";
   return { balanceDue, status };
 }
 
@@ -128,7 +128,7 @@ export function computeSaleBalance(
   const bal = D(totalInclGst).minus(D(amountReceived)).minus(D(linkedPayments));
   const balanceReceivable = toMoney(bal);
   const status: TxnStatus =
-    bal.lte(0) ? "Received" : bal.lt(D(totalInclGst)) ? "Partial" : "Pending";
+    bal.lt(0) ? "Overpaid" : bal.eq(0) ? "Received" : bal.lt(D(totalInclGst)) ? "Partial" : "Pending";
   return { balanceReceivable, status };
 }
 
