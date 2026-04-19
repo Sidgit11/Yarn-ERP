@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { FIBRE_TYPES, QUALITY_GRADES } from "@/lib/constants";
 import { cn, formatIndianCurrency, formatDate } from "@/lib/utils";
@@ -355,7 +355,26 @@ export default function ProductsPage() {
 
   const utils = trpc.useUtils();
 
+  const [sortBy, setSortBy] = useState<"name" | "stock">("stock");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [filterStatus, setFilterStatus] = useState<"All" | "Active" | "Inactive" | "In Stock" | "Out of Stock">("All");
+
   const { data: productsList, isLoading } = trpc.products.list.useQuery();
+  const { data: dashData } = trpc.dashboard.getMetrics.useQuery();
+
+  // Build a map of product name → inventory from dashboard data
+  const inventoryMap = useMemo(() => {
+    const map = new Map<string, { bags: number; kg: number }>();
+    if (dashData?.inventory) {
+      for (const item of dashData.inventory) {
+        map.set(item.productName, { bags: item.bagsInHand, kg: item.kgInHand });
+      }
+    }
+    return map;
+  }, [dashData?.inventory]);
+
+  // Get stock for a product
+  const getStock = (fullName: string) => inventoryMap.get(fullName) ?? { bags: 0, kg: 0 };
 
   const createMutation = trpc.products.create.useMutation({
     onSuccess: () => {
@@ -387,9 +406,47 @@ export default function ProductsPage() {
     },
   });
 
-  const filteredProducts = (productsList ?? []).filter((p) =>
-    p.fullName.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredProducts = useMemo(() => {
+    let items = [...(productsList ?? [])];
+
+    // Filter by status
+    if (filterStatus === "Active") items = items.filter((p) => p.active);
+    else if (filterStatus === "Inactive") items = items.filter((p) => !p.active);
+    else if (filterStatus === "In Stock") items = items.filter((p) => getStock(p.fullName).kg > 0);
+    else if (filterStatus === "Out of Stock") items = items.filter((p) => getStock(p.fullName).kg <= 0);
+
+    // Search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      items = items.filter((p) => p.fullName.toLowerCase().includes(q));
+    }
+
+    // Sort
+    items.sort((a, b) => {
+      if (sortBy === "stock") {
+        const stockA = getStock(a.fullName).kg;
+        const stockB = getStock(b.fullName).kg;
+        return sortDir === "desc" ? stockB - stockA : stockA - stockB;
+      }
+      return sortDir === "desc" ? b.fullName.localeCompare(a.fullName) : a.fullName.localeCompare(b.fullName);
+    });
+
+    return items;
+  }, [productsList, search, sortBy, sortDir, filterStatus, inventoryMap]);
+
+  // Summary metrics
+  const summaryMetrics = useMemo(() => {
+    if (!productsList || productsList.length === 0) return null;
+    let totalBags = 0, totalKg = 0;
+    for (const p of productsList) {
+      const s = getStock(p.fullName);
+      totalBags += s.bags;
+      totalKg += s.kg;
+    }
+    // Inventory value from dashboard
+    const inventoryValue = dashData?.money?.cashInInventory ?? 0;
+    return { totalProducts: productsList.length, totalBags, totalKg, inventoryValue };
+  }, [productsList, inventoryMap, dashData]);
 
   function openCreate() {
     setEditingId(null);
@@ -457,16 +514,63 @@ export default function ProductsPage() {
         </button>
       </div>
 
-      {/* Search */}
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search products..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-4 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
-        />
-      </div>
+      {/* Summary Metrics */}
+      {summaryMetrics && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+            <span className="text-[11px] text-[#6C757D] leading-tight block">{summaryMetrics.totalProducts} Products</span>
+          </div>
+          <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-1.5">
+            <span className="text-[11px] text-violet-500 leading-tight block">Stock</span>
+            <span className="text-sm font-semibold text-violet-700 leading-tight">{summaryMetrics.totalBags} bags / {summaryMetrics.totalKg.toLocaleString("en-IN")} kg</span>
+          </div>
+          <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-1.5">
+            <span className="text-[11px] text-violet-500 leading-tight block">Stock Value</span>
+            <span className="text-sm font-semibold text-violet-700 leading-tight">{formatIndianCurrency(summaryMetrics.inventoryValue)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Search + Sort + Filter */}
+      {!isLoading && productsList && productsList.length > 0 && (
+        <div className="mb-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#1B4F72]/20 focus:border-[#1B4F72]"
+            />
+            <button
+              onClick={() => {
+                if (sortBy === "stock" && sortDir === "desc") setSortDir("asc");
+                else if (sortBy === "stock" && sortDir === "asc") { setSortBy("name"); setSortDir("asc"); }
+                else if (sortBy === "name" && sortDir === "asc") setSortDir("desc");
+                else { setSortBy("stock"); setSortDir("desc"); }
+              }}
+              className="shrink-0 px-3 py-2 text-xs font-medium text-[#6C757D] bg-[#F8F9FA] border border-gray-200 rounded-xl hover:bg-gray-100 transition-colors whitespace-nowrap"
+            >
+              Sort: {sortBy === "stock" ? "Stock" : "Name"} {sortDir === "desc" ? "\u2193" : "\u2191"}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {(["All", "Active", "Inactive", "In Stock", "Out of Stock"] as const).map((chip) => (
+              <button
+                key={chip}
+                onClick={() => setFilterStatus(chip)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  filterStatus === chip
+                    ? "bg-[#1B4F72] text-white border-[#1B4F72]"
+                    : "bg-white text-[#6C757D] border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Loading Skeleton */}
       {isLoading && (
@@ -489,7 +593,7 @@ export default function ProductsPage() {
       )}
 
       {/* Empty State */}
-      {!isLoading && filteredProducts.length === 0 && (
+      {!isLoading && filteredProducts.length === 0 && (!productsList || productsList.length === 0) && (
         <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-8 text-center">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -521,6 +625,13 @@ export default function ProductsPage() {
               + Add First Product
             </button>
           )}
+        </div>
+      )}
+
+      {/* No matching results */}
+      {!isLoading && filteredProducts.length === 0 && productsList && productsList.length > 0 && (
+        <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-8 text-center">
+          <p className="text-[#6C757D] text-sm">No matching products</p>
         </div>
       )}
 
@@ -559,12 +670,18 @@ export default function ProductsPage() {
                       {product.active ? "Active" : "Inactive"}
                     </span>
                   </div>
-                  {(product.hsnCode || product.colorShade) && (
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#6C757D]">
-                      {product.hsnCode && <span>HSN: {product.hsnCode}</span>}
-                      {product.colorShade && <span>{product.colorShade}</span>}
-                    </div>
-                  )}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#6C757D] mt-0.5">
+                    {(() => {
+                      const stock = getStock(product.fullName);
+                      return stock.kg > 0 ? (
+                        <span className="text-violet-600 font-medium">{stock.bags} bags / {stock.kg.toLocaleString("en-IN")} kg in hand</span>
+                      ) : (
+                        <span className="text-[#ADB5BD]">No stock</span>
+                      );
+                    })()}
+                    {product.hsnCode && <span>HSN: {product.hsnCode}</span>}
+                    {product.colorShade && <span>{product.colorShade}</span>}
+                  </div>
                 </div>
                 <div className="ml-2 text-[#ADB5BD]">
                   {isExpanded ? (
