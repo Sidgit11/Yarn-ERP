@@ -221,9 +221,38 @@ export default function DashboardPage() {
     cc.utilizationPct > 80 ? "bg-red-500" : cc.utilizationPct > 50 ? "bg-amber-500" : "bg-emerald-500";
   const ccCardClass = cc.utilizationPct > 80 ? "animate-pulse-border border-2 !border-red-300" : "";
 
+  const hasNegativeInventory = data.negativeInventory && data.negativeInventory.length > 0;
+
   return (
     <div className="animate-fade-in">
       <h1 className="text-xl font-bold text-gray-900 mb-5">Dashboard</h1>
+
+      {/* Data issue callout */}
+      {hasNegativeInventory && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-red-800 mb-1">Data issue: Negative inventory</h3>
+              <p className="text-xs text-red-600 mb-2">
+                The following products show more sold than purchased. This usually means a purchase entry is missing or a sale was recorded against the wrong product.
+              </p>
+              <div className="space-y-1">
+                {data.negativeInventory.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="font-medium text-red-700">{item.productName}</span>
+                    <span className="text-red-500">{item.bagsInHand} bags / {item.kgInHand} kg</span>
+                  </div>
+                ))}
+              </div>
+              <Link href="/purchases/new" className="inline-flex items-center gap-1 text-xs font-medium text-red-700 hover:text-red-900 mt-2">
+                Add missing purchase <ArrowRight size={12} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 
         {/* Card 1: CC Account Position */}

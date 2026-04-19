@@ -284,7 +284,7 @@ export const dashboardRouter = router({
       salesByProduct[s.productId].bags += s.qtyBags;
       salesByProduct[s.productId].kg += s.qtyBags * Number(s.kgPerBag);
     }
-    const inventory = allProducts.map((prod) => {
+    const allInventory = allProducts.map((prod) => {
       const bought = purchasesByProduct[prod.id] ?? { bags: 0, kg: 0 };
       const sold = salesByProduct[prod.id] ?? { bags: 0, kg: 0 };
       return {
@@ -292,7 +292,9 @@ export const dashboardRouter = router({
         bagsInHand: bought.bags - sold.bags,
         kgInHand: bought.kg - sold.kg,
       };
-    }).filter((i) => i.bagsInHand > 0);
+    });
+    const inventory = allInventory.filter((i) => i.bagsInHand > 0);
+    const negativeInventory = allInventory.filter((i) => i.bagsInHand < 0);
 
     // Compute cashInInventory per-product (only positive stock × avg cost)
     // This avoids the bug where negative inventory products (sold > bought)
@@ -370,6 +372,7 @@ export const dashboardRouter = router({
         netMarginPct: toMoney(netMarginPct),
       },
       inventory,
+      negativeInventory,
       stats: {
         totalPurchases: allPurchases.length,
         totalSales: allSales.length,
