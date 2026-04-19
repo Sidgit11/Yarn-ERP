@@ -270,16 +270,8 @@ export const dashboardRouter = router({
       return due < today;
     }).length;
 
-    const cashInInventory = totalPurchaseBase.minus(totalCogs);
-    const netGst = totalSaleGst.minus(totalPurchaseGst);
-    const itcAvailable = netGst.lt(0) ? netGst.abs() : D(0);
-
-    const grossMargin = totalSaleBase.minus(totalCogs).minus(totalSaleTransport).minus(totalBrokerCommission);
-    const grossMarginPct = totalSaleBase.gt(0) ? grossMargin.div(totalSaleBase).mul(100) : D(0);
-    const netMargin = grossMargin.minus(actualInterest);
-    const netMarginPct = totalSaleBase.gt(0) ? netMargin.div(totalSaleBase).mul(100) : D(0);
-
     // ── Inventory per product (indexed for O(N) instead of O(P*M)) ────────
+    // Moved above cashInInventory to compute per-product stock value correctly
     const purchasesByProduct: Record<string, { bags: number; kg: number }> = {};
     for (const p of allPurchases) {
       if (!purchasesByProduct[p.productId]) purchasesByProduct[p.productId] = { bags: 0, kg: 0 };
@@ -301,6 +293,29 @@ export const dashboardRouter = router({
         kgInHand: bought.kg - sold.kg,
       };
     }).filter((i) => i.bagsInHand > 0);
+
+    // Compute cashInInventory per-product (only positive stock × avg cost)
+    // This avoids the bug where negative inventory products (sold > bought)
+    // cause the global formula (totalPurchaseBase - totalCogs) to undercount.
+    let cashInInventory = D(0);
+    for (const prod of allProducts) {
+      const bought = purchasesByProduct[prod.id] ?? { bags: 0, kg: 0 };
+      const sold = salesByProduct[prod.id] ?? { bags: 0, kg: 0 };
+      const kgInHand = bought.kg - sold.kg;
+      if (kgInHand > 0) {
+        const pp = productPurchases[prod.id];
+        const avgCost = pp && pp.totalKg > 0 ? pp.totalBase / pp.totalKg : 0;
+        cashInInventory = cashInInventory.plus(D(avgCost).mul(kgInHand));
+      }
+    }
+
+    const netGst = totalSaleGst.minus(totalPurchaseGst);
+    const itcAvailable = netGst.lt(0) ? netGst.abs() : D(0);
+
+    const grossMargin = totalSaleBase.minus(totalCogs).minus(totalSaleTransport).minus(totalBrokerCommission);
+    const grossMarginPct = totalSaleBase.gt(0) ? grossMargin.div(totalSaleBase).mul(100) : D(0);
+    const netMargin = grossMargin.minus(actualInterest);
+    const netMarginPct = totalSaleBase.gt(0) ? netMargin.div(totalSaleBase).mul(100) : D(0);
 
     // ── CC Money Trail: where is the CC money sitting? ─────────────────
     const ccMoneyTrail = {
