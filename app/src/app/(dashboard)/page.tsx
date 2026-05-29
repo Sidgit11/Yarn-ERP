@@ -5,6 +5,8 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency } from "@/lib/utils";
 import { MetricExplainer } from "@/components/shared/metric-explainer";
+import { DateRangePicker, ActiveRangeBanner, AsOfTodayPill } from "@/components/shared/date-range-picker";
+import { useDateRange } from "@/lib/useDateRange";
 import {
   TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronUp,
   Landmark, Wallet, Receipt, BarChart3, Package, Activity, AlertTriangle,
@@ -119,11 +121,13 @@ function DashboardCard({
   cardKey,
   children,
   className = "",
+  asOf = false,
 }: {
   title: string;
   cardKey: string;
   children: React.ReactNode;
   className?: string;
+  asOf?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const config = CARD_CONFIG[cardKey];
@@ -146,7 +150,10 @@ function DashboardCard({
           <div className={`w-9 h-9 rounded-xl ${config.theme.iconBg} flex items-center justify-center`}>
             <Icon size={18} className={config.theme.accentText} />
           </div>
-          <h2 className="text-sm font-semibold text-gray-700 tracking-wide uppercase">{title}</h2>
+          <h2 className="text-sm font-semibold text-gray-700 tracking-wide uppercase">
+            {title}
+            {asOf && <AsOfTodayPill />}
+          </h2>
         </div>
         <span className="text-gray-400 md:hidden">
           {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
@@ -161,13 +168,26 @@ function DashboardCard({
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
+function DashboardHeader() {
+  return (
+    <div className="mb-5">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+        <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+        <DateRangePicker className="md:max-w-xs" />
+      </div>
+      <ActiveRangeBanner showAsOfNote />
+    </div>
+  );
+}
+
 export default function DashboardPage() {
-  const { data, isLoading } = trpc.dashboard.getMetrics.useQuery();
+  const { serverInput } = useDateRange();
+  const { data, isLoading } = trpc.dashboard.getMetrics.useQuery(serverInput);
 
   if (isLoading) {
     return (
       <div className="animate-fade-in">
-        <h1 className="text-xl font-bold text-gray-900 mb-5">Dashboard</h1>
+        <DashboardHeader />
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonCard key={i} />
@@ -191,7 +211,7 @@ export default function DashboardPage() {
   if (isEmpty) {
     return (
       <div className="animate-fade-in">
-        <h1 className="text-xl font-bold text-gray-900 mb-5">Dashboard</h1>
+        <DashboardHeader />
         <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center" style={{ boxShadow: "var(--shadow-sm)" }}>
           <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
             <Activity size={28} className="text-blue-500" />
@@ -225,7 +245,7 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="text-xl font-bold text-gray-900 mb-5">Dashboard</h1>
+      <DashboardHeader />
 
       {/* Data issue callout */}
       {hasNegativeInventory && (
@@ -256,7 +276,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 
         {/* Card 1: CC Account Position */}
-        <DashboardCard title="CC Account" cardKey="cc" className={ccCardClass}>
+        <DashboardCard title="CC Account" cardKey="cc" className={ccCardClass} asOf>
           <MetricRow
             label="CC used"
             value={formatIndianCurrency(cc.outstanding)}
@@ -346,7 +366,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 2: Where Is My Money? */}
-        <DashboardCard title="Where Is My Money?" cardKey="money">
+        <DashboardCard title="Where Is My Money?" cardKey="money" asOf>
           <MetricRow label="Stock in Hand" value={formatIndianCurrency(money.cashInInventory)} isHero
             explainer={{ title: "Stock in Hand", description: "Value of unsold yarn sitting in your godown, at purchase cost.", formula: "Total Purchase Base - Cost of Goods Sold" }} />
           <Separator />
@@ -445,7 +465,7 @@ export default function DashboardPage() {
         </DashboardCard>
 
         {/* Card 5: Stock in Hand */}
-        <DashboardCard title="Stock in Hand" cardKey="inventory">
+        <DashboardCard title="Stock in Hand" cardKey="inventory" asOf>
           {inventory.length === 0 ? (
             <p className="text-sm text-gray-400 py-2">No inventory in hand.</p>
           ) : (

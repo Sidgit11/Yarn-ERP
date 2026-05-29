@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
 import { payments, contacts, purchases, sales, ccEntries } from "../../db/schema";
-import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, inArray, gte, lte } from "drizzle-orm";
 import {
   computePurchaseTotals,
   computeSaleTotals,
@@ -12,12 +12,24 @@ import {
   toMoney,
 } from "../../services/calculations";
 
+const dateRangeInput = z
+  .object({
+    from: z.string().optional(),
+    to: z.string().optional(),
+  })
+  .optional();
+
 export const paymentsRouter = router({
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: protectedProcedure
+    .input(dateRangeInput)
+    .query(async ({ ctx, input }) => {
+    const filters = [eq(payments.tenantId, ctx.tenantId), isNull(payments.deletedAt)];
+    if (input?.from) filters.push(gte(payments.date, input.from));
+    if (input?.to) filters.push(lte(payments.date, input.to));
     const rows = await ctx.db
       .select()
       .from(payments)
-      .where(and(eq(payments.tenantId, ctx.tenantId), isNull(payments.deletedAt)))
+      .where(and(...filters))
       .orderBy(desc(payments.date));
 
     if (rows.length === 0) return [];

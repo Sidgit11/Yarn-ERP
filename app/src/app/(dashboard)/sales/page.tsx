@@ -5,13 +5,17 @@ import Link from "next/link";
 import { Pencil, Trash2, AlertTriangle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
+import { DateRangePicker, ActiveRangeBanner } from "@/components/shared/date-range-picker";
+import { useDateRange } from "@/lib/useDateRange";
+import { formatRangeLabel } from "@/lib/dateRange";
 import { toast } from "sonner";
 
 export default function SalesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const utils = trpc.useUtils();
-  const { data: salesList, isLoading } = trpc.sales.list.useQuery();
+  const { serverInput, stored, isAllTime } = useDateRange();
+  const { data: salesList, isLoading } = trpc.sales.list.useQuery(serverInput);
 
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
@@ -91,15 +95,19 @@ export default function SalesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
         <h1 className="text-2xl font-bold text-[#1B4F72]">Sales</h1>
-        <Link
-          href="/sales/new"
-          className="inline-flex items-center min-h-[48px] px-4 py-3 bg-[#1B4F72] text-white text-base font-semibold rounded-xl hover:bg-[#154360] transition-colors"
-        >
-          + New Sale
-        </Link>
+        <div className="flex flex-col md:flex-row md:items-center gap-2">
+          <DateRangePicker />
+          <Link
+            href="/sales/new"
+            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 bg-[#1B4F72] text-white text-base font-semibold rounded-xl hover:bg-[#154360] transition-colors"
+          >
+            + New Sale
+          </Link>
+        </div>
       </div>
+      <ActiveRangeBanner />
 
       {/* Summary Metrics Strip */}
       {!isLoading && summaryMetrics && (
@@ -196,9 +204,13 @@ export default function SalesPage() {
           <div className="text-gray-300 text-5xl mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-[#ADB5BD]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           </div>
-          <h3 className="text-lg font-semibold text-[#2C3E50] mb-2">No sales yet</h3>
+          <h3 className="text-lg font-semibold text-[#2C3E50] mb-2">
+            {isAllTime ? "No sales yet" : `No sales in ${formatRangeLabel(stored)}`}
+          </h3>
           <p className="text-[#6C757D] mb-6 text-sm">
-            Record your first yarn sale to start tracking revenue, margins, and receivables.
+            {isAllTime
+              ? "Record your first yarn sale to start tracking revenue, margins, and receivables."
+              : "Try a different date range, or record a new sale."}
           </p>
           <Link
             href="/sales/new"

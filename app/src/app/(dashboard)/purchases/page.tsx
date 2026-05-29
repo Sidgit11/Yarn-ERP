@@ -5,13 +5,17 @@ import Link from "next/link";
 import { Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
+import { DateRangePicker, ActiveRangeBanner } from "@/components/shared/date-range-picker";
+import { useDateRange } from "@/lib/useDateRange";
+import { formatRangeLabel } from "@/lib/dateRange";
 import { toast } from "sonner";
 
 export default function PurchasesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const utils = trpc.useUtils();
-  const { data: purchasesList, isLoading } = trpc.purchases.list.useQuery();
+  const { serverInput, stored, isAllTime } = useDateRange();
+  const { data: purchasesList, isLoading } = trpc.purchases.list.useQuery(serverInput);
 
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
@@ -83,15 +87,19 @@ export default function PurchasesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
         <h1 className="text-2xl font-bold text-[#1B4F72]">Purchases</h1>
-        <Link
-          href="/purchases/new"
-          className="inline-flex items-center min-h-[48px] px-4 py-3 bg-[#1B4F72] text-white text-base font-semibold rounded-xl hover:bg-[#154360] transition-colors"
-        >
-          + New Purchase
-        </Link>
+        <div className="flex flex-col md:flex-row md:items-center gap-2">
+          <DateRangePicker />
+          <Link
+            href="/purchases/new"
+            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 bg-[#1B4F72] text-white text-base font-semibold rounded-xl hover:bg-[#154360] transition-colors"
+          >
+            + New Purchase
+          </Link>
+        </div>
       </div>
+      <ActiveRangeBanner />
 
       {/* Summary Metrics Strip */}
       {summaryMetrics && (
@@ -177,9 +185,13 @@ export default function PurchasesPage() {
       ) : !purchasesList || purchasesList.length === 0 ? (
         <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-8 text-center">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-[#ADB5BD] mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
-          <h3 className="text-lg font-semibold text-[#2C3E50] mb-2">No purchases yet</h3>
+          <h3 className="text-lg font-semibold text-[#2C3E50] mb-2">
+            {isAllTime ? "No purchases yet" : `No purchases in ${formatRangeLabel(stored)}`}
+          </h3>
           <p className="text-[#6C757D] mb-6 text-sm">
-            Record your first yarn purchase to start tracking inventory, costs, and balances.
+            {isAllTime
+              ? "Record your first yarn purchase to start tracking inventory, costs, and balances."
+              : "Try a different date range, or record a new purchase."}
           </p>
           <Link
             href="/purchases/new"

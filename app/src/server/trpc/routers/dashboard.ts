@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import {
   purchases, sales, payments, ccEntries, config, ccInterestMonthly, contacts, products,
@@ -13,10 +14,28 @@ import {
   toMoney,
 } from "../../services/calculations";
 
+const dateRangeInput = z
+  .object({
+    from: z.string().optional(),
+    to: z.string().optional(),
+  })
+  .optional();
+
 export const dashboardRouter = router({
-  getMetrics: protectedProcedure.query(async ({ ctx }) => {
+  getMetrics: protectedProcedure
+    .input(dateRangeInput)
+    .query(async ({ ctx, input }) => {
     const tid = ctx.tenantId;
     const t0 = performance.now();
+    // Period-metric filter: applied via .filter() inside the existing loops.
+    // As-of metrics (CC, payables, receivables, stock-in-hand) ignore this.
+    const rangeFrom = input?.from ?? null;
+    const rangeTo = input?.to ?? null;
+    const inRange = (dateIso: string): boolean => {
+      if (rangeFrom && dateIso < rangeFrom) return false;
+      if (rangeTo && dateIso > rangeTo) return false;
+      return true;
+    };
 
     // Parallel-load all data in 7 queries (not N+1)
     const [cfg, ccEntriesAll, monthlyInterest, allPurchases, allSales, allPayments, allProducts] =
@@ -48,11 +67,17 @@ export const dashboardRouter = router({
     );
 
     // ── Purchase aggregation (using shared calculation) ───────────────────
+    // All-time totals (used by as-of payables/receivables/money-trail).
     let totalPurchaseBase = D(0);
     let totalPurchaseGst = D(0);
     let totalPurchaseGrand = D(0);
     let totalPurchasePaid = D(0);
     let totalPurchaseTransport = D(0);
+    // Period totals (used by period margins/gst). Only differ when filter is active.
+    let periodPurchaseBase = D(0);
+    let periodPurchaseGst = D(0);
+    let periodPurchaseTransport = D(0);
+    let periodPurchasesCount = 0;
     const productPurchases: Record<string, { totalBase: number; totalKg: number }> = {};
 
     for (const p of allPurchases) {
@@ -63,11 +88,20 @@ export const dashboardRouter = router({
       totalPurchasePaid = totalPurchasePaid.plus(D(p.amountPaid));
       totalPurchaseTransport = totalPurchaseTransport.plus(D(p.transport));
 
+      // productPurchases always uses all-time data so avgCost (weighted
+      // across the full purchase history) stays correct even when filtering.
       if (!productPurchases[p.productId]) {
         productPurchases[p.productId] = { totalBase: 0, totalKg: 0 };
       }
       productPurchases[p.productId].totalBase += t.baseAmount;
       productPurchases[p.productId].totalKg += t.totalKg;
+
+      if (inRange(p.date)) {
+        periodPurchaseBase = periodPurchaseBase.plus(t.baseAmount);
+        periodPurchaseGst = periodPurchaseGst.plus(t.gstAmount);
+        periodPurchaseTransport = periodPurchaseTransport.plus(D(p.transport));
+        periodPurchasesCount++;
+      }
     }
 
     // ── Batch-load broker contacts for sales + purchases (1 query, not N) ──
@@ -84,6 +118,7 @@ export const dashboardRouter = router({
     console.log(`[dashboard] Broker batch load — ${(performance.now() - t1).toFixed(1)}ms`);
 
     // ── Sale aggregation ──────────────────────────────────────────────────
+    // All-time totals (used by as-of receivables).
     let totalSaleBase = D(0);
     let totalSaleGst = D(0);
     let totalSaleInclGst = D(0);
@@ -91,6 +126,13 @@ export const dashboardRouter = router({
     let totalSaleTransport = D(0);
     let totalCogs = D(0);
     let totalBrokerCommission = D(0);
+    // Period totals (used by period margins/gst/stats).
+    let periodSaleBase = D(0);
+    let periodSaleGst = D(0);
+    let periodSaleTransport = D(0);
+    let periodCogs = D(0);
+    let periodSaleBrokerCommission = D(0);
+    let periodSalesCount = 0;
 
     for (const s of allSales) {
       const t = computeSaleTotals(s);
@@ -103,44 +145,59 @@ export const dashboardRouter = router({
       // COGS using weighted average
       const pp = productPurchases[s.productId];
       const avgCost = pp && pp.totalKg > 0 ? pp.totalBase / pp.totalKg : 0;
-      totalCogs = totalCogs.plus(D(avgCost).mul(t.totalKg));
+      const cogs = D(avgCost).mul(t.totalKg);
+      totalCogs = totalCogs.plus(cogs);
 
       // Broker commission
+      let brokerCommission = D(0);
       if (s.viaBroker && s.brokerId) {
         const broker = brokerMap.get(s.brokerId);
         if (broker) {
-          totalBrokerCommission = totalBrokerCommission.plus(
-            computeBrokerCommission(
-              broker.brokerCommissionType,
-              broker.brokerCommissionValue,
-              s.qtyBags,
-              t.baseAmount
-            )
-          );
+          brokerCommission = D(computeBrokerCommission(
+            broker.brokerCommissionType,
+            broker.brokerCommissionValue,
+            s.qtyBags,
+            t.baseAmount
+          ));
+          totalBrokerCommission = totalBrokerCommission.plus(brokerCommission);
         }
+      }
+
+      if (inRange(s.date)) {
+        periodSaleBase = periodSaleBase.plus(t.baseAmount);
+        periodSaleGst = periodSaleGst.plus(t.gstAmount);
+        periodSaleTransport = periodSaleTransport.plus(D(s.transport));
+        periodCogs = periodCogs.plus(cogs);
+        periodSaleBrokerCommission = periodSaleBrokerCommission.plus(brokerCommission);
+        periodSalesCount++;
       }
     }
 
     // ── Purchase broker commission ──────────────────────────────────────────
     let totalPurchaseBrokerCommission = D(0);
+    let periodPurchaseBrokerCommission = D(0);
     for (const p of allPurchases) {
       if (p.viaBroker && p.brokerId) {
         const broker = brokerMap.get(p.brokerId);
         if (broker) {
           const t = computePurchaseTotals(p);
-          totalPurchaseBrokerCommission = totalPurchaseBrokerCommission.plus(
-            computeBrokerCommission(
-              broker.brokerCommissionType,
-              broker.brokerCommissionValue,
-              p.qtyBags,
-              t.baseAmount
-            )
-          );
+          const commission = D(computeBrokerCommission(
+            broker.brokerCommissionType,
+            broker.brokerCommissionValue,
+            p.qtyBags,
+            t.baseAmount
+          ));
+          totalPurchaseBrokerCommission = totalPurchaseBrokerCommission.plus(commission);
+          if (inRange(p.date)) {
+            periodPurchaseBrokerCommission = periodPurchaseBrokerCommission.plus(commission);
+          }
         }
       }
     }
-    // Total broker commission = sales + purchases
+    // Total broker commission = sales + purchases (all-time, for payables).
     totalBrokerCommission = totalBrokerCommission.plus(totalPurchaseBrokerCommission);
+    // Period broker commission = sales + purchases within range (for period margins).
+    const periodBrokerCommission = periodSaleBrokerCommission.plus(periodPurchaseBrokerCommission);
 
     // ── Payment aggregation ───────────────────────────────────────────────
     // Batch-load party contacts for payments (1 query, not N)
@@ -311,13 +368,25 @@ export const dashboardRouter = router({
       }
     }
 
+    // All-time net GST (used for money.gstNet — as-of position).
     const netGst = totalSaleGst.minus(totalPurchaseGst);
     const itcAvailable = netGst.lt(0) ? netGst.abs() : D(0);
 
-    const grossMargin = totalSaleBase.minus(totalCogs).minus(totalSaleTransport).minus(totalBrokerCommission);
-    const grossMarginPct = totalSaleBase.gt(0) ? grossMargin.div(totalSaleBase).mul(100) : D(0);
-    const netMargin = grossMargin.minus(actualInterest);
-    const netMarginPct = totalSaleBase.gt(0) ? netMargin.div(totalSaleBase).mul(100) : D(0);
+    // Period margins (revenue/COGS/expenses/margin for the selected window).
+    const periodGrossMargin = periodSaleBase
+      .minus(periodCogs)
+      .minus(periodSaleTransport)
+      .minus(periodBrokerCommission);
+    const periodGrossMarginPct = periodSaleBase.gt(0)
+      ? periodGrossMargin.div(periodSaleBase).mul(100)
+      : D(0);
+    // CC interest is intrinsically as-of (running balance × rate), so when the
+    // user filters by period we don't try to slice it — show 0 contribution.
+    const periodNetMargin = periodGrossMargin; // no period-attributed interest in v1
+    const periodNetMarginPct = periodSaleBase.gt(0)
+      ? periodNetMargin.div(periodSaleBase).mul(100)
+      : D(0);
+    const periodNetGst = periodSaleGst.minus(periodPurchaseGst);
 
     // ── CC Money Trail: where is the CC money sitting? ─────────────────
     const ccMoneyTrail = {
@@ -342,6 +411,7 @@ export const dashboardRouter = router({
         difference: toMoney(D(calcInterest).minus(actualInterest)),
         moneyTrail: ccMoneyTrail,
       },
+      // money.* is as-of: shows where money is sitting right now regardless of filter.
       money: {
         cashInInventory: toMoney(cashInInventory),
         totalReceivables: toMoney(totalReceivables),
@@ -351,31 +421,34 @@ export const dashboardRouter = router({
         transporterPending: toMoney(transporterPayables),
         expenses: toMoney(totalPurchaseTransport.plus(totalSaleTransport).plus(totalBrokerCommission)),
         gstNet: toMoney(totalPurchaseGst.minus(totalSaleGst)), // positive = ITC sitting with govt
-        unrealizedProfit: toMoney(grossMargin),
+        unrealizedProfit: toMoney(periodGrossMargin),
         totalTransport: toMoney(totalPurchaseTransport.plus(totalSaleTransport)),
       },
+      // gst.* is period-shaped (monthly filing); when no filter, period == all-time.
       gst: {
-        outputGst: toMoney(totalSaleGst),
-        inputGst: toMoney(totalPurchaseGst),
-        netPayable: toMoney(netGst),
+        outputGst: toMoney(periodSaleGst),
+        inputGst: toMoney(periodPurchaseGst),
+        netPayable: toMoney(periodNetGst),
         itcAvailable: toMoney(itcAvailable),
       },
+      // margins.* is period-shaped.
       margins: {
-        revenue: toMoney(totalSaleBase),
-        cogs: toMoney(totalCogs),
-        transport: toMoney(totalSaleTransport),
-        brokerCommission: toMoney(totalBrokerCommission),
-        grossMargin: toMoney(grossMargin),
-        grossMarginPct: toMoney(grossMarginPct),
+        revenue: toMoney(periodSaleBase),
+        cogs: toMoney(periodCogs),
+        transport: toMoney(periodSaleTransport),
+        brokerCommission: toMoney(periodBrokerCommission),
+        grossMargin: toMoney(periodGrossMargin),
+        grossMarginPct: toMoney(periodGrossMarginPct),
         ccInterest: toMoney(D(actualInterest)),
-        netMargin: toMoney(netMargin),
-        netMarginPct: toMoney(netMarginPct),
+        netMargin: toMoney(periodNetMargin),
+        netMarginPct: toMoney(periodNetMarginPct),
       },
       inventory,
       negativeInventory,
       stats: {
-        totalPurchases: allPurchases.length,
-        totalSales: allSales.length,
+        // Period counts (transactions in window). Pending* remain as-of.
+        totalPurchases: periodPurchasesCount,
+        totalSales: periodSalesCount,
         pendingPayments: pendingPurchasePayments,
         pendingCollections: pendingSaleCollections,
         overdueCollections,

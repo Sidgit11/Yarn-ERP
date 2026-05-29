@@ -5,6 +5,9 @@ import { Pencil } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatIndianCurrency, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { DateRangePicker, ActiveRangeBanner } from "@/components/shared/date-range-picker";
+import { useDateRange } from "@/lib/useDateRange";
+import { formatRangeLabel } from "@/lib/dateRange";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -12,7 +15,8 @@ export default function PaymentsPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const utils = trpc.useUtils();
 
-  const { data: paymentsList, isLoading } = trpc.payments.list.useQuery();
+  const { serverInput, stored, isAllTime } = useDateRange();
+  const { data: paymentsList, isLoading } = trpc.payments.list.useQuery(serverInput);
 
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
@@ -74,15 +78,19 @@ export default function PaymentsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
         <h1 className="text-2xl font-bold text-[#1B4F72]">Payments</h1>
-        <Link
-          href="/payments/new"
-          className="inline-flex items-center min-h-[48px] bg-[#1B4F72] text-white px-4 py-3 rounded-xl text-base font-semibold hover:bg-[#154360] transition-colors"
-        >
-          + Record Payment
-        </Link>
+        <div className="flex flex-col md:flex-row md:items-center gap-2">
+          <DateRangePicker />
+          <Link
+            href="/payments/new"
+            className="inline-flex items-center justify-center min-h-[44px] bg-[#1B4F72] text-white px-4 py-2 rounded-xl text-base font-semibold hover:bg-[#154360] transition-colors"
+          >
+            + Record Payment
+          </Link>
+        </div>
       </div>
+      <ActiveRangeBanner />
 
       {/* Search, Filter, Sort Toolbar */}
       {!isLoading && paymentsList && paymentsList.length > 0 && (
@@ -151,9 +159,13 @@ export default function PaymentsPage() {
       {!isLoading && (!paymentsList || paymentsList.length === 0) && (
         <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] border border-gray-200 p-8 text-center">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-[#ADB5BD] mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-          <h3 className="text-lg font-semibold text-[#2C3E50] mb-2">No payments yet</h3>
+          <h3 className="text-lg font-semibold text-[#2C3E50] mb-2">
+            {isAllTime ? "No payments yet" : `No payments in ${formatRangeLabel(stored)}`}
+          </h3>
           <p className="text-[#6C757D] mb-6 text-sm">
-            Record payments to mills and collections from buyers to keep your balances up to date.
+            {isAllTime
+              ? "Record payments to mills and collections from buyers to keep your balances up to date."
+              : "Try a different date range, or record a new payment."}
           </p>
           <Link
             href="/payments/new"

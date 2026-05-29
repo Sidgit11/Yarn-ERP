@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
 import { purchases, contacts, products, payments } from "../../db/schema";
-import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, inArray, gte, lte } from "drizzle-orm";
 import {
   computePurchaseTotals,
   computePurchaseBalance,
@@ -106,14 +106,24 @@ function enrichPurchase(
 
 // ── Router ──────────────────────────────────────────────────────────────────
 
+const dateRangeInput = z
+  .object({
+    from: z.string().optional(),
+    to: z.string().optional(),
+  })
+  .optional();
+
 export const purchasesRouter = router({
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: protectedProcedure
+    .input(dateRangeInput)
+    .query(async ({ ctx, input }) => {
+    const filters = [eq(purchases.tenantId, ctx.tenantId), isNull(purchases.deletedAt)];
+    if (input?.from) filters.push(gte(purchases.date, input.from));
+    if (input?.to) filters.push(lte(purchases.date, input.to));
     const rows = await ctx.db
       .select()
       .from(purchases)
-      .where(
-        and(eq(purchases.tenantId, ctx.tenantId), isNull(purchases.deletedAt))
-      )
+      .where(and(...filters))
       .orderBy(desc(purchases.date));
 
     if (rows.length === 0) return [];

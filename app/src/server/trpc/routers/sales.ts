@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
 import { sales, contacts, products, purchases, payments } from "../../db/schema";
-import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, inArray, gte, lte } from "drizzle-orm";
 import {
   computeSaleTotals,
   computeSaleBalance,
@@ -159,12 +159,24 @@ function enrichSale(
 
 // ── Router ──────────────────────────────────────────────────────────────────
 
+const dateRangeInput = z
+  .object({
+    from: z.string().optional(),
+    to: z.string().optional(),
+  })
+  .optional();
+
 export const salesRouter = router({
-  list: protectedProcedure.query(async ({ ctx }) => {
+  list: protectedProcedure
+    .input(dateRangeInput)
+    .query(async ({ ctx, input }) => {
+    const filters = [eq(sales.tenantId, ctx.tenantId), isNull(sales.deletedAt)];
+    if (input?.from) filters.push(gte(sales.date, input.from));
+    if (input?.to) filters.push(lte(sales.date, input.to));
     const rows = await ctx.db
       .select()
       .from(sales)
-      .where(and(eq(sales.tenantId, ctx.tenantId), isNull(sales.deletedAt)))
+      .where(and(...filters))
       .orderBy(desc(sales.date));
 
     if (rows.length === 0) return [];
