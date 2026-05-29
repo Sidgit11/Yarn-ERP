@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
-import { formatIndianCurrency } from "@/lib/utils";
+import { formatIndianCurrency, kgPerBagWarning, dateOutOfRangeWarning } from "@/lib/utils";
 import { GST_RATES } from "@/lib/constants";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -27,6 +27,7 @@ export default function NewPurchasePage() {
   const [brokerId, setBrokerId] = useState("");
   const [qtyBags, setQtyBags] = useState<number | "">("");
   const [kgPerBag, setKgPerBag] = useState<number>(100);
+  const [kgPerBagTouched, setKgPerBagTouched] = useState(false);
   const [ratePerKg, setRatePerKg] = useState<number | "">("");
   const [gstPct, setGstPct] = useState("5");
   const [transport, setTransport] = useState<number | "">("");
@@ -51,6 +52,7 @@ export default function NewPurchasePage() {
       setBrokerId(existingPurchase.brokerId || "");
       setQtyBags(existingPurchase.qtyBags);
       setKgPerBag(Number(existingPurchase.kgPerBag));
+      setKgPerBagTouched(true);
       setRatePerKg(parseFloat(existingPurchase.ratePerKg));
       setGstPct(existingPurchase.gstPct);
       setTransport(parseFloat(existingPurchase.transport));
@@ -77,6 +79,20 @@ export default function NewPurchasePage() {
       }
     }
   }, [selectedProduct, suppliers, supplierId]);
+
+  // Auto-fill kg/bag from product history, unless user has already touched it.
+  const { data: typicalKgPerBag } = trpc.purchases.typicalKgPerBag.useQuery(
+    { productId },
+    { enabled: !!productId }
+  );
+  useEffect(() => {
+    if (!kgPerBagTouched && typicalKgPerBag && typicalKgPerBag > 0) {
+      setKgPerBag(typicalKgPerBag);
+    }
+  }, [typicalKgPerBag, kgPerBagTouched]);
+
+  const kgWarning = kgPerBagWarning(kgPerBag, typicalKgPerBag);
+  const dateWarning = dateOutOfRangeWarning(date);
 
   // Mutations
   const createPurchase = trpc.purchases.create.useMutation({
@@ -306,6 +322,11 @@ export default function NewPurchasePage() {
             onChange={(e) => setDate(e.target.value)}
             className={inputClass}
           />
+          {dateWarning && (
+            <p className="mt-1.5 text-sm text-[#B7950B] bg-[#FEF9E7] border border-[#F7DC6F] rounded-lg px-3 py-2">
+              ⚠ {dateWarning}
+            </p>
+          )}
         </div>
 
         {/* Product */}
@@ -432,10 +453,18 @@ export default function NewPurchasePage() {
               type="number"
               step="any"
               value={kgPerBag}
-              onChange={(e) => setKgPerBag(parseFloat(e.target.value) || 100)}
+              onChange={(e) => {
+                setKgPerBag(parseFloat(e.target.value) || 100);
+                setKgPerBagTouched(true);
+              }}
               min={0.01}
               className={inputClass}
             />
+            {kgWarning && (
+              <p className="mt-1.5 text-sm text-[#B7950B] bg-[#FEF9E7] border border-[#F7DC6F] rounded-lg px-3 py-2">
+                ⚠ {kgWarning}
+              </p>
+            )}
           </div>
         </div>
 

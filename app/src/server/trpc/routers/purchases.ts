@@ -200,6 +200,38 @@ export const purchasesRouter = router({
       return totalKg.gt(0) ? toMoney(D(result[0]?.totalBase).div(totalKg)) : 0;
     }),
 
+  /**
+   * Returns the modal kg/bag for a product, computed from active purchases.
+   * Used to auto-fill and warn on the Purchase/Sale forms so a typo in
+   * kg-per-bag doesn't silently distort inventory.
+   */
+  typicalKgPerBag: protectedProcedure
+    .input(z.object({ productId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Weight each kg/bag value by qty_bags so a single 1-bag outlier
+      // can't outvote dozens of 50-bag purchases at the standard weight.
+      const rows = await ctx.db
+        .select({
+          kgPerBag: purchases.kgPerBag,
+          totalBags: sql<string>`SUM(${purchases.qtyBags})`,
+        })
+        .from(purchases)
+        .where(
+          and(
+            eq(purchases.productId, input.productId),
+            eq(purchases.tenantId, ctx.tenantId),
+            isNull(purchases.deletedAt)
+          )
+        )
+        .groupBy(purchases.kgPerBag);
+      if (rows.length === 0) return null;
+      let best = rows[0];
+      for (const r of rows) {
+        if (Number(r.totalBags) > Number(best.totalBags)) best = r;
+      }
+      return Number(best.kgPerBag);
+    }),
+
   create: protectedProcedure
     .input(
       z.object({
