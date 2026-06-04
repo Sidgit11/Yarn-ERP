@@ -28,11 +28,20 @@ export const trendsRouter = router({
       const fromIso = buckets[0];
       const toIso = isoDate(today);
 
-      // PG date_trunc on a `date` column needs explicit casts so the function
-      // overload resolves (without the casts, Postgres errors with
-      // "function date_trunc(unknown, date) does not exist").
+      // Inline bucket as a raw SQL literal (safe: validated by z.enum above).
+      // Parameterising it caused drizzle to emit different parameter slots for
+      // SELECT ($1) and GROUP BY ($5), so Postgres saw them as non-matching
+      // expressions and the GROUP BY rejected the query.
+      const bucketLit = sql.raw(`'${bucket}'`);
       const truncSql = (col: any) =>
-        sql<string>`date_trunc(${bucket}::text, ${col}::timestamp)::date`;
+        sql<string>`date_trunc(${bucketLit}, ${col}::timestamp)::date`;
+
+      // Use GROUP BY 1 (ordinal) — referring to the first SELECT column
+      // sidesteps drizzle inconsistently qualifying the column ref (the
+      // SELECT-side emits `"date"`, GROUP BY emits `"purchases"."date"`,
+      // and Postgres treats those expressions as non-matching for grouping).
+      const ord1 = sql.raw("1");
+      const ord1and2 = sql.raw("1, 2");
 
       // Run the 3 aggregations + the global avg-cost lookup in parallel.
       const [purchaseRows, saleRows, paymentRows, avgCostRow] = await Promise.all([
@@ -51,7 +60,7 @@ export const trendsRouter = router({
               lte(purchases.date, toIso)
             )
           )
-          .groupBy(truncSql(purchases.date)),
+          .groupBy(ord1),
         ctx.db
           .select({
             bucket: truncSql(sales.date),
@@ -69,7 +78,7 @@ export const trendsRouter = router({
               lte(sales.date, toIso)
             )
           )
-          .groupBy(truncSql(sales.date)),
+          .groupBy(ord1),
         ctx.db
           .select({
             bucket: truncSql(payments.date),
@@ -85,7 +94,7 @@ export const trendsRouter = router({
               lte(payments.date, toIso)
             )
           )
-          .groupBy(truncSql(payments.date), payments.direction),
+          .groupBy(ord1and2),
         // Global weighted avg cost per kg (all-time). Used so bucket-margin
         // doesn't get skewed by buckets that happen to have few purchases.
         ctx.db
