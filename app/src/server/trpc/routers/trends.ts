@@ -28,10 +28,11 @@ export const trendsRouter = router({
       const fromIso = buckets[0];
       const toIso = isoDate(today);
 
-      // PG date_trunc on a `date` column returns a timestamp; we cast back
-      // to date so it groups cleanly and the wire stays string-typed.
+      // PG date_trunc on a `date` column needs explicit casts so the function
+      // overload resolves (without the casts, Postgres errors with
+      // "function date_trunc(unknown, date) does not exist").
       const truncSql = (col: any) =>
-        sql<string>`date_trunc(${bucket}, ${col})::date`;
+        sql<string>`date_trunc(${bucket}::text, ${col}::timestamp)::date`;
 
       // Run the 3 aggregations + the global avg-cost lookup in parallel.
       const [purchaseRows, saleRows, paymentRows, avgCostRow] = await Promise.all([

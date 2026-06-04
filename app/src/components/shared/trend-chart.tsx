@@ -81,7 +81,7 @@ export function TrendChart({
                   width={56}
                 />
                 <Tooltip content={<CustomTooltip format={format} />} cursor={{ fill: "rgba(27,79,114,0.06)" }} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
                   {data.map((d, i) => (
                     <Cell
                       key={i}
@@ -123,6 +123,7 @@ export function TrendChart({
                   dot={{ r: 3, fill: COLOR_LINE }}
                   activeDot={{ r: 5 }}
                   connectNulls={false}
+                  isAnimationActive={false}
                 />
               </LineChart>
             )}

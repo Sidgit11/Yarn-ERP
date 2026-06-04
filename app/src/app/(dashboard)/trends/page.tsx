@@ -1,8 +1,25 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { trpc } from "@/lib/trpc";
 import { LOOKBACK_PRESETS, TrendsBucket, useTrendsView } from "@/lib/useTrendsView";
-import { TrendChart } from "@/components/shared/trend-chart";
+
+// Lazy-load recharts so it doesn't block the /trends shell from painting.
+const TrendChart = dynamic(
+  () => import("@/components/shared/trend-chart").then((m) => m.TrendChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="bg-white rounded-2xl border border-gray-100 p-4 h-[280px] animate-pulse"
+        style={{ boxShadow: "var(--shadow-sm)" }}
+      >
+        <div className="h-4 w-32 bg-gray-100 rounded mb-3" />
+        <div className="h-[220px] bg-gray-50 rounded" />
+      </div>
+    ),
+  }
+);
 
 const BUCKETS: { value: TrendsBucket; label: string }[] = [
   { value: "day", label: "Day" },
@@ -17,10 +34,10 @@ const BUCKET_UNIT: Record<TrendsBucket, string> = {
 };
 
 export default function TrendsPage() {
-  const { view, hydrated, setBucket, setLookback } = useTrendsView();
+  const { view, setBucket, setLookback } = useTrendsView();
   const { data, isLoading, isFetching } = trpc.trends.getSeries.useQuery(
     { bucket: view.bucket, lookback: view.lookback },
-    { enabled: hydrated }
+    { staleTime: 60_000 }
   );
 
   const subtitle = `Last ${view.lookback} ${BUCKET_UNIT[view.bucket]}`;
