@@ -11,6 +11,7 @@ import { reconRouter } from "./routers/recon";
 import { dashboardRouter } from "./routers/dashboard";
 import { exportRouter } from "./routers/export";
 import { importRouter } from "./routers/import";
+import { trendsRouter } from "./routers/trends";
 
 export const appRouter = router({
   contacts: contactsRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   ledger: ledgerRouter,
   recon: reconRouter,
   dashboard: dashboardRouter,
+  trends: trendsRouter,
   export: exportRouter,
   import: importRouter,
 });

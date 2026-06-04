@@ -6,7 +6,8 @@ import { useState } from "react";
 import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, PackagePlus, IndianRupee, CreditCard,
-  Menu, Landmark, BookOpen, Users, Package, Settings, FileCheck, Upload, X, LogOut
+  Menu, Landmark, BookOpen, Users, Package, Settings, FileCheck, Upload, X, LogOut,
+  LineChart
 } from "lucide-react";
 
 const mainTabs = [
@@ -17,6 +18,7 @@ const mainTabs = [
 ];
 
 const moreItems = [
+  { label: "Trends", href: "/trends", icon: LineChart },
   { label: "CC Ledger", href: "/cc-ledger", icon: Landmark },
   { label: "Ledger", href: "/ledger", icon: BookOpen },
   { label: "Contacts", href: "/contacts", icon: Users },

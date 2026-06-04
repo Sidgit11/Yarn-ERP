@@ -5,11 +5,13 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard, ShoppingCart, TrendingUp, CreditCard,
-  Landmark, BookOpen, Users, Package, Settings, FileCheck, Upload, LogOut
+  Landmark, BookOpen, Users, Package, Settings, FileCheck, Upload, LogOut,
+  LineChart
 } from "lucide-react";
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Trends", href: "/trends", icon: LineChart },
   { label: "Purchases", href: "/purchases", icon: ShoppingCart },
   { label: "Sales", href: "/sales", icon: TrendingUp },
   { label: "Payments", href: "/payments", icon: CreditCard },
