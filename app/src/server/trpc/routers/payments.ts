@@ -11,6 +11,7 @@ import {
   D,
   toMoney,
 } from "../../services/calculations";
+import { capBatchToBalances } from "../../services/collections";
 
 const dateRangeInput = z
   .object({
@@ -154,6 +155,268 @@ export const paymentsRouter = router({
         }
       }
       return txns;
+    }),
+
+  // Collections inbox: every buyer with an outstanding balance, plus their open
+  // bills, for the tap-to-approve flow. Sorted overdue-first, then largest owed.
+  collectionsInbox: protectedProcedure.query(async ({ ctx }) => {
+    const buyers = await ctx.db
+      .select()
+      .from(contacts)
+      .where(
+        and(
+          eq(contacts.tenantId, ctx.tenantId),
+          eq(contacts.type, "Buyer"),
+          isNull(contacts.deletedAt)
+        )
+      );
+    if (buyers.length === 0) return [];
+    const buyerName = new Map(buyers.map((b: any) => [b.id, b.name]));
+
+    const saleRows = await ctx.db
+      .select()
+      .from(sales)
+      .where(
+        and(
+          inArray(sales.buyerId, buyers.map((b: any) => b.id)),
+          eq(sales.tenantId, ctx.tenantId),
+          isNull(sales.deletedAt)
+        )
+      );
+    const linkedMap = await batchLinkedPayments(
+      ctx.db,
+      ctx.tenantId,
+      saleRows.map((s: any) => s.displayId)
+    );
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    type Bill = {
+      displayId: string;
+      balance: number;
+      total: number;
+      date: string;
+      dueDate: string | null;
+      isOverdue: boolean;
+      daysOverdue: number;
+    };
+    const billsByBuyer = new Map<string, Bill[]>();
+
+    for (const s of saleRows) {
+      const totals = computeSaleTotals(s);
+      const linked = linkedMap.get(s.displayId) ?? 0;
+      const balance = toMoney(D(totals.totalInclGst).minus(D(s.amountReceived)).minus(linked));
+      if (balance <= 0) continue;
+
+      let isOverdue = false;
+      let daysOverdue = 0;
+      if (s.dueDate) {
+        const due = new Date(s.dueDate);
+        due.setHours(0, 0, 0, 0);
+        daysOverdue = Math.floor((today.getTime() - due.getTime()) / 86400000);
+        isOverdue = daysOverdue > 0;
+      }
+
+      const arr = billsByBuyer.get(s.buyerId) ?? [];
+      arr.push({
+        displayId: s.displayId,
+        balance,
+        total: totals.totalInclGst,
+        date: s.date,
+        dueDate: s.dueDate ?? null,
+        isOverdue,
+        daysOverdue: Math.max(0, daysOverdue),
+      });
+      billsByBuyer.set(s.buyerId, arr);
+    }
+
+    const parties = [];
+    for (const [buyerId, bills] of billsByBuyer) {
+      bills.sort((a, b) => a.date.localeCompare(b.date)); // oldest-first for FIFO
+      const totalOutstanding = toMoney(
+        bills.reduce((acc, b) => acc.plus(b.balance), D(0))
+      );
+      const overdueBills = bills.filter((b) => b.isOverdue);
+      parties.push({
+        partyId: buyerId,
+        partyName: buyerName.get(buyerId) ?? "",
+        totalOutstanding,
+        billCount: bills.length,
+        isOverdue: overdueBills.length > 0,
+        daysOverdue: overdueBills.reduce((m, b) => Math.max(m, b.daysOverdue), 0),
+        bills,
+      });
+    }
+
+    // Overdue parties first, then by largest outstanding.
+    parties.sort((a, b) => {
+      if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+      return b.totalOutstanding - a.totalOutstanding;
+    });
+    return parties;
+  }),
+
+  // Batch-record buyer collections from the tap-to-approve inbox. Each item is
+  // one bill; amounts are re-validated against current balances at save time so
+  // a stale screen can never overpay or double-record.
+  recordCollections: protectedProcedure
+    .input(
+      z.object({
+        date: isoDateString,
+        mode: z.enum(["Cash", "NEFT", "UPI", "Cheque", "RTGS"]),
+        viaCC: z.boolean().default(true),
+        items: z
+          .array(
+            z.object({
+              saleDisplayId: z.string(),
+              amount: monetaryString,
+            })
+          )
+          .min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.db.transaction(async (tx: any) => {
+        const displayIds = [...new Set(input.items.map((i) => i.saleDisplayId))];
+        const saleRows = await tx
+          .select()
+          .from(sales)
+          .where(
+            and(
+              inArray(sales.displayId, displayIds),
+              eq(sales.tenantId, ctx.tenantId),
+              isNull(sales.deletedAt)
+            )
+          );
+        const saleByDisplay = new Map(saleRows.map((s: any) => [s.displayId, s]));
+        const linkedMap = await batchLinkedPayments(tx, ctx.tenantId, displayIds);
+
+        const balances = saleRows.map((s: any) => {
+          const totals = computeSaleTotals(s);
+          const linked = linkedMap.get(s.displayId) ?? 0;
+          return {
+            displayId: s.displayId,
+            balance: toMoney(D(totals.totalInclGst).minus(D(s.amountReceived)).minus(linked)),
+          };
+        });
+
+        const { toRecord, skipped } = capBatchToBalances(
+          input.items.map((i) => ({ displayId: i.saleDisplayId, amount: Number(i.amount) })),
+          balances
+        );
+
+        // Buyer names for CC notes.
+        const buyerIds = [...new Set(saleRows.map((s: any) => s.buyerId))] as string[];
+        const buyerRows = buyerIds.length
+          ? await tx
+              .select({ id: contacts.id, name: contacts.name })
+              .from(contacts)
+              .where(and(inArray(contacts.id, buyerIds), eq(contacts.tenantId, ctx.tenantId)))
+          : [];
+        const buyerName = new Map(buyerRows.map((b: any) => [b.id, b.name]));
+
+        // CC running balance (sequential repays within the batch).
+        let prevBalance = D(0);
+        if (input.viaCC && toRecord.length > 0) {
+          const lastEntry = await tx
+            .select()
+            .from(ccEntries)
+            .where(eq(ccEntries.tenantId, ctx.tenantId))
+            .orderBy(desc(ccEntries.date), desc(ccEntries.createdAt))
+            .limit(1);
+          prevBalance = D(lastEntry[0]?.runningBalance ?? "0");
+        }
+
+        let total = D(0);
+        const createdPaymentIds: string[] = [];
+        for (const rec of toRecord) {
+          const s: any = saleByDisplay.get(rec.displayId);
+          const amountStr = D(rec.amount).toFixed(2);
+          const inserted = await tx
+            .insert(payments)
+            .values({
+              tenantId: ctx.tenantId,
+              date: input.date,
+              partyId: s.buyerId,
+              direction: "Received",
+              amount: amountStr,
+              mode: input.mode,
+              againstTxnId: rec.displayId,
+              reference: null,
+              notes: "Collection (quick approve)",
+              viaCC: input.viaCC,
+            })
+            .returning({ id: payments.id });
+          createdPaymentIds.push(inserted[0].id);
+          total = total.plus(rec.amount);
+
+          if (input.viaCC) {
+            const newBalance = prevBalance.minus(rec.amount);
+            await tx.insert(ccEntries).values({
+              tenantId: ctx.tenantId,
+              date: input.date,
+              event: "Repay",
+              amount: amountStr,
+              runningBalance: newBalance.toFixed(2),
+              notes: `Auto: Received from ${buyerName.get(s.buyerId) ?? "Unknown"} (${rec.displayId})`,
+            });
+            prevBalance = newBalance;
+          }
+        }
+
+        return {
+          recordedCount: toRecord.length,
+          totalAmount: toMoney(total),
+          skipped,
+          createdPaymentIds,
+        };
+      });
+    }),
+
+  // Undo a batch of just-recorded collections: soft-delete each payment and
+  // reverse its CC entry (mirrors `delete`). Powers the success-toast Undo.
+  undoCollections: protectedProcedure
+    .input(z.object({ ids: z.array(z.string().uuid()).min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.db.transaction(async (tx: any) => {
+        const deleted = await tx
+          .update(payments)
+          .set({ deletedAt: new Date() })
+          .where(
+            and(
+              inArray(payments.id, input.ids),
+              eq(payments.tenantId, ctx.tenantId),
+              isNull(payments.deletedAt)
+            )
+          )
+          .returning();
+
+        for (const payment of deleted) {
+          if (!payment.viaCC) continue;
+          const reverseEvent = payment.direction === "Paid" ? "Repay" : "Draw";
+          const lastEntry = await tx
+            .select()
+            .from(ccEntries)
+            .where(eq(ccEntries.tenantId, ctx.tenantId))
+            .orderBy(desc(ccEntries.date), desc(ccEntries.createdAt))
+            .limit(1);
+          const prevBalance = D(lastEntry[0]?.runningBalance ?? "0");
+          const amount = D(payment.amount);
+          const newBalance =
+            reverseEvent === "Draw" ? prevBalance.plus(amount) : prevBalance.minus(amount);
+          await tx.insert(ccEntries).values({
+            tenantId: ctx.tenantId,
+            date: new Date().toISOString().split("T")[0],
+            event: reverseEvent,
+            amount: payment.amount,
+            runningBalance: newBalance.toFixed(2),
+            notes: "Auto-reversed: undone collection",
+          });
+        }
+
+        return { undoneCount: deleted.length };
+      });
     }),
 
   create: protectedProcedure

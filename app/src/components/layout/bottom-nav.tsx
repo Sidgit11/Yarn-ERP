@@ -7,7 +7,7 @@ import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, PackagePlus, IndianRupee, CreditCard,
   Menu, Landmark, BookOpen, Users, Package, Settings, FileCheck, Upload, X, LogOut,
-  LineChart
+  LineChart, HandCoins
 } from "lucide-react";
 
 const mainTabs = [
@@ -18,6 +18,7 @@ const mainTabs = [
 ];
 
 const moreItems = [
+  { label: "Collections", href: "/collections", icon: HandCoins },
   { label: "Trends", href: "/trends", icon: LineChart },
   { label: "CC Ledger", href: "/cc-ledger", icon: Landmark },
   { label: "Ledger", href: "/ledger", icon: BookOpen },

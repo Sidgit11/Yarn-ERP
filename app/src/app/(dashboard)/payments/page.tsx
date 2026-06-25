@@ -83,6 +83,12 @@ export default function PaymentsPage() {
         <div className="flex flex-col md:flex-row md:items-center gap-2">
           <DateRangePicker />
           <Link
+            href="/collections"
+            className="inline-flex items-center justify-center min-h-[44px] bg-emerald-600 text-white px-4 py-2 rounded-xl text-base font-semibold hover:bg-emerald-700 transition-colors"
+          >
+            Collect from buyers
+          </Link>
+          <Link
             href="/payments/new"
             className="inline-flex items-center justify-center min-h-[44px] bg-[#1B4F72] text-white px-4 py-2 rounded-xl text-base font-semibold hover:bg-[#154360] transition-colors"
           >

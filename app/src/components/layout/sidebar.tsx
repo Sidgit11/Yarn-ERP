@@ -6,7 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard, ShoppingCart, TrendingUp, CreditCard,
   Landmark, BookOpen, Users, Package, Settings, FileCheck, Upload, LogOut,
-  LineChart
+  LineChart, HandCoins
 } from "lucide-react";
 
 const navItems = [
@@ -14,6 +14,7 @@ const navItems = [
   { label: "Trends", href: "/trends", icon: LineChart },
   { label: "Purchases", href: "/purchases", icon: ShoppingCart },
   { label: "Sales", href: "/sales", icon: TrendingUp },
+  { label: "Collections", href: "/collections", icon: HandCoins },
   { label: "Payments", href: "/payments", icon: CreditCard },
   { label: "CC Ledger", href: "/cc-ledger", icon: Landmark },
   { label: "Ledger", href: "/ledger", icon: BookOpen },

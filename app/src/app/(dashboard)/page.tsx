@@ -410,7 +410,13 @@ export default function DashboardPage() {
                 explainer={{ title: "Unrealized Profit", description: "Your gross trading margin. This becomes real cash only when buyers pay you.", formula: "Sale Revenue - COGS - Transport - Broker Commission" }} />
             </>
           )}
-          <div className="pt-3">
+          <div className="pt-3 flex items-center gap-4">
+            {money.totalReceivables > 0 && (
+              <Link href="/collections"
+                className="inline-flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors">
+                Record collections <ArrowRight size={14} />
+              </Link>
+            )}
             <Link href="/ledger"
               className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
               View Full Ledger <ArrowRight size={14} />
