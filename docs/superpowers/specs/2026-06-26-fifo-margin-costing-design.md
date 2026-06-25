@@ -49,8 +49,11 @@ computeSaleCosting(purchases, sales) → Map<saleId, SaleCosting>
 SaleCosting = { cogs: number, costedBags: number, uncostedBags: number }
 ```
 
-Inputs are minimal rows: `{ id, productId, date, qtyBags, kgPerBag, ratePerKg }` plus a
-stable ordering key (creation order / `displayId` / `createdAt`).
+Inputs are minimal rows: `{ id, productId, date, qtyBags, kgPerBag, ratePerKg, createdAt }`.
+
+**Ordering** (applied to both purchases and sales): `date` ascending, then `createdAt`
+ascending, then `id` ascending as a final deterministic tiebreak. (`displayId` is text like
+"P001" and is not used for ordering.)
 
 **Algorithm, per product:**
 
@@ -63,6 +66,13 @@ stable ordering key (creation order / `displayId` / `createdAt`).
 4. If the queue empties while a sale still needs bags, the remainder is **uncosted**
    (`uncostedBags`, contributing 0 to COGS). This occurs only when cumulative sales exceed
    cumulative purchases for that product.
+
+**Layer availability:** a sale consumes the oldest remaining layer by purchase order
+regardless of whether that purchase's `date` precedes the sale's `date`. This is a single
+chronological queue per product — we do **not** restrict a sale to only purchases dated on
+or before it. Consequence: a sale is uncosted only on **global exhaustion** of the
+product's purchased bags, not on a per-date availability check. This keeps day-to-day
+data-entry ordering from producing spurious uncosted flags.
 
 Properties:
 - **Pure** — no DB access, no new tables. Deterministic given its inputs.
