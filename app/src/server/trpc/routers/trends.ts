@@ -3,6 +3,8 @@ import { router, protectedProcedure } from "../trpc";
 import { purchases, sales, payments } from "../../db/schema";
 import { and, eq, isNull, gte, lte, sql } from "drizzle-orm";
 import { D, toMoney } from "../../services/calculations";
+import { computeSaleCosting } from "../../services/fifoCosting";
+import type Decimal from "decimal.js";
 
 // Trends page: bucketed time-series for the dashboard's key metrics.
 // One procedure powers all 8 charts.
@@ -36,49 +38,39 @@ export const trendsRouter = router({
       const truncSql = (col: any) =>
         sql<string>`date_trunc(${bucketLit}, ${col}::timestamp)::date`;
 
-      // Use GROUP BY 1 (ordinal) — referring to the first SELECT column
-      // sidesteps drizzle inconsistently qualifying the column ref (the
-      // SELECT-side emits `"date"`, GROUP BY emits `"purchases"."date"`,
-      // and Postgres treats those expressions as non-matching for grouping).
-      const ord1 = sql.raw("1");
+      // Use GROUP BY 1, 2 (ordinals) — referring to SELECT columns sidesteps
+      // drizzle inconsistently qualifying the column ref for grouping.
       const ord1and2 = sql.raw("1, 2");
 
-      // Run the 3 aggregations + the global avg-cost lookup in parallel.
-      const [purchaseRows, saleRows, paymentRows, avgCostRow] = await Promise.all([
+      // FIFO margin needs each sale's COGS, which depends on the whole product
+      // history — so we load all-time purchases + sales (raw) and bucket them in
+      // JS. Payments have no FIFO dependency, so they stay a windowed aggregate.
+      const [allPurchases, allSales, paymentRows] = await Promise.all([
         ctx.db
           .select({
-            bucket: truncSql(purchases.date),
-            baseAmount: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag} * ${purchases.ratePerKg}::numeric), 0)`,
-            qtyBags: sql<string>`COALESCE(SUM(${purchases.qtyBags}), 0)`,
+            id: purchases.id,
+            productId: purchases.productId,
+            date: purchases.date,
+            qtyBags: purchases.qtyBags,
+            kgPerBag: purchases.kgPerBag,
+            ratePerKg: purchases.ratePerKg,
+            createdAt: purchases.createdAt,
           })
           .from(purchases)
-          .where(
-            and(
-              eq(purchases.tenantId, tid),
-              isNull(purchases.deletedAt),
-              gte(purchases.date, fromIso),
-              lte(purchases.date, toIso)
-            )
-          )
-          .groupBy(ord1),
+          .where(and(eq(purchases.tenantId, tid), isNull(purchases.deletedAt))),
         ctx.db
           .select({
-            bucket: truncSql(sales.date),
-            baseAmount: sql<string>`COALESCE(SUM(${sales.qtyBags} * ${sales.kgPerBag} * ${sales.ratePerKg}::numeric), 0)`,
-            totalKg: sql<string>`COALESCE(SUM(${sales.qtyBags} * ${sales.kgPerBag}), 0)`,
-            transport: sql<string>`COALESCE(SUM(${sales.transport}::numeric), 0)`,
-            qtyBags: sql<string>`COALESCE(SUM(${sales.qtyBags}), 0)`,
+            id: sales.id,
+            productId: sales.productId,
+            date: sales.date,
+            qtyBags: sales.qtyBags,
+            kgPerBag: sales.kgPerBag,
+            ratePerKg: sales.ratePerKg,
+            transport: sales.transport,
+            createdAt: sales.createdAt,
           })
           .from(sales)
-          .where(
-            and(
-              eq(sales.tenantId, tid),
-              isNull(sales.deletedAt),
-              gte(sales.date, fromIso),
-              lte(sales.date, toIso)
-            )
-          )
-          .groupBy(ord1),
+          .where(and(eq(sales.tenantId, tid), isNull(sales.deletedAt))),
         ctx.db
           .select({
             bucket: truncSql(payments.date),
@@ -95,29 +87,41 @@ export const trendsRouter = router({
             )
           )
           .groupBy(ord1and2),
-        // Global weighted avg cost per kg (all-time). Used so bucket-margin
-        // doesn't get skewed by buckets that happen to have few purchases.
-        ctx.db
-          .select({
-            totalBase: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag} * ${purchases.ratePerKg}::numeric), 0)`,
-            totalKg: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag}), 0)`,
-          })
-          .from(purchases)
-          .where(and(eq(purchases.tenantId, tid), isNull(purchases.deletedAt))),
       ]);
 
-      const totalKgGlobal = D(avgCostRow[0]?.totalKg ?? "0");
-      const avgCostPerKg = totalKgGlobal.gt(0)
-        ? D(avgCostRow[0]?.totalBase ?? "0").div(totalKgGlobal)
-        : D(0);
+      const fifoCosting = computeSaleCosting(allPurchases, allSales);
 
-      // Index aggregations by bucket-start string.
-      const purchaseByBucket = new Map(
-        purchaseRows.map((r) => [normalizeBucket(r.bucket), r])
-      );
-      const saleByBucket = new Map(
-        saleRows.map((r) => [normalizeBucket(r.bucket), r])
-      );
+      // Bucket purchases (windowed) in JS.
+      const purchaseByBucket = new Map<string, { baseAmount: Decimal; qtyBags: number }>();
+      for (const p of allPurchases) {
+        if (p.date < fromIso || p.date > toIso) continue;
+        const key = bucketStartOf(p.date, bucket);
+        const cur = purchaseByBucket.get(key) ?? { baseAmount: D(0), qtyBags: 0 };
+        cur.baseAmount = cur.baseAmount.plus(D(p.qtyBags).mul(D(p.kgPerBag)).mul(D(p.ratePerKg)));
+        cur.qtyBags += p.qtyBags;
+        purchaseByBucket.set(key, cur);
+      }
+
+      // Bucket sales (windowed) in JS, attributing each sale's FIFO COGS.
+      const saleByBucket = new Map<
+        string,
+        { baseAmount: Decimal; cogs: Decimal; transport: Decimal; qtyBags: number; uncostedBags: number }
+      >();
+      for (const s of allSales) {
+        if (s.date < fromIso || s.date > toIso) continue;
+        const key = bucketStartOf(s.date, bucket);
+        const cur =
+          saleByBucket.get(key) ??
+          { baseAmount: D(0), cogs: D(0), transport: D(0), qtyBags: 0, uncostedBags: 0 };
+        const c = fifoCosting.get(s.id);
+        cur.baseAmount = cur.baseAmount.plus(D(s.qtyBags).mul(D(s.kgPerBag)).mul(D(s.ratePerKg)));
+        cur.cogs = cur.cogs.plus(c?.cogs ?? 0);
+        cur.transport = cur.transport.plus(D(s.transport));
+        cur.qtyBags += s.qtyBags;
+        cur.uncostedBags += c?.uncostedBags ?? 0;
+        saleByBucket.set(key, cur);
+      }
+
       const paymentByBucketDir = new Map<string, { received: string; paid: string }>();
       for (const r of paymentRows) {
         const key = normalizeBucket(r.bucket);
@@ -134,6 +138,7 @@ export const trendsRouter = router({
       const marginPct: (number | null)[] = [];
       const bagsPurchased: number[] = [];
       const bagsSold: number[] = [];
+      const uncostedBags: number[] = [];
       const paymentsReceived: number[] = [];
       const paymentsPaid: number[] = [];
 
@@ -142,12 +147,11 @@ export const trendsRouter = router({
         const s = saleByBucket.get(b);
         const pay = paymentByBucketDir.get(b);
 
-        const purchaseAmt = D(p?.baseAmount ?? "0");
-        const saleAmt = D(s?.baseAmount ?? "0");
-        const saleKg = D(s?.totalKg ?? "0");
-        const saleTransport = D(s?.transport ?? "0");
+        const purchaseAmt = p?.baseAmount ?? D(0);
+        const saleAmt = s?.baseAmount ?? D(0);
+        const cogs = s?.cogs ?? D(0);
+        const saleTransport = s?.transport ?? D(0);
 
-        const cogs = avgCostPerKg.mul(saleKg);
         const grossMargin = saleAmt.minus(cogs).minus(saleTransport);
         const pct = saleAmt.gt(0) ? grossMargin.div(saleAmt).mul(100) : null;
 
@@ -155,8 +159,9 @@ export const trendsRouter = router({
         purchaseValue.push(toMoney(purchaseAmt));
         margin.push(toMoney(grossMargin));
         marginPct.push(pct === null ? null : toMoney(pct));
-        bagsPurchased.push(Number(p?.qtyBags ?? 0));
-        bagsSold.push(Number(s?.qtyBags ?? 0));
+        bagsPurchased.push(p?.qtyBags ?? 0);
+        bagsSold.push(s?.qtyBags ?? 0);
+        uncostedBags.push(s?.uncostedBags ?? 0);
         paymentsReceived.push(toMoney(D(pay?.received ?? "0")));
         paymentsPaid.push(toMoney(D(pay?.paid ?? "0")));
       }
@@ -171,6 +176,7 @@ export const trendsRouter = router({
         marginPct,
         bagsPurchased,
         bagsSold,
+        uncostedBags,
         paymentsReceived,
         paymentsPaid,
       };
@@ -216,6 +222,23 @@ function buildBucketStarts(today: Date, bucket: "day" | "week" | "month", count:
     }
   }
   return out;
+}
+
+// Map a single ISO date to its bucket-start ISO date. Mirrors buildBucketStarts
+// and Postgres date_trunc (week starts Monday) so JS-bucketed rows line up with
+// the continuous bucket axis.
+function bucketStartOf(iso: string, bucket: "day" | "week" | "month"): string {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  if (bucket === "day") return isoDate(date);
+  if (bucket === "week") {
+    const dow = date.getDay(); // 0=Sun..6=Sat
+    const offsetToMonday = dow === 0 ? 6 : dow - 1;
+    const monday = new Date(date);
+    monday.setDate(date.getDate() - offsetToMonday);
+    return isoDate(monday);
+  }
+  return isoDate(new Date(date.getFullYear(), date.getMonth(), 1));
 }
 
 // PG returns date as ISO string or Date object depending on driver — normalize.

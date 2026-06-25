@@ -1,13 +1,12 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
-import { sales, contacts, products, purchases, payments } from "../../db/schema";
+import { sales, contacts, products, payments } from "../../db/schema";
 import { eq, and, isNull, desc, sql, inArray, gte, lte } from "drizzle-orm";
 import {
   computeSaleTotals,
   computeSaleBalance,
   computeBrokerCommission,
-  computeAvgCostPerKg,
   productFullName,
   monetaryString,
   isoDateString,
@@ -15,6 +14,8 @@ import {
   D,
   toMoney,
 } from "../../services/calculations";
+import { loadSaleCostingMap } from "../../services/fifoCostingDb";
+import type { SaleCosting } from "../../services/fifoCosting";
 
 // ── Batch helpers (shared pattern) ──────────────────────────────────────────
 
@@ -58,37 +59,6 @@ async function loadLinkedPayments(db: any, tenantId: string, displayIds: string[
   return new Map(rows.map((r: any) => [r.againstTxnId!, parseFloat(r.total)]));
 }
 
-/** Batch-load avg cost per kg for each product ID. Single aggregate query. */
-async function loadAvgCosts(
-  db: any,
-  tenantId: string,
-  productIds: string[]
-): Promise<Map<string, number>> {
-  if (productIds.length === 0) return new Map();
-  const unique = [...new Set(productIds)];
-  const rows = await db
-    .select({
-      productId: purchases.productId,
-      totalBase: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag} * ${purchases.ratePerKg}::numeric), 0)`,
-      totalKg: sql<string>`COALESCE(SUM(${purchases.qtyBags} * ${purchases.kgPerBag}), 0)`,
-    })
-    .from(purchases)
-    .where(
-      and(
-        inArray(purchases.productId, unique),
-        eq(purchases.tenantId, tenantId),
-        isNull(purchases.deletedAt)
-      )
-    )
-    .groupBy(purchases.productId);
-
-  const map = new Map<string, number>();
-  for (const r of rows) {
-    map.set(r.productId, computeAvgCostPerKg(r.totalBase, r.totalKg));
-  }
-  return map;
-}
-
 // ── Enrichment ──────────────────────────────────────────────────────────────
 
 function enrichSale(
@@ -97,10 +67,14 @@ function enrichSale(
   buyer: any | undefined,
   broker: any | undefined | null,
   linkedPayments: number,
-  avgCostPerKg: number
+  costing: SaleCosting | undefined
 ) {
   const totals = computeSaleTotals(s);
-  const cogs = toMoney(D(avgCostPerKg).mul(totals.totalKg));
+  // FIFO cost of goods sold for this sale (excludes any uncosted/oversold bags).
+  const cogs = costing?.cogs ?? 0;
+  const uncostedBags = costing?.uncostedBags ?? 0;
+  // Effective cost/kg realised by this sale (FIFO COGS over kg sold).
+  const costPerKg = totals.totalKg > 0 ? toMoney(D(cogs).div(totals.totalKg)) : 0;
   const transport = toMoney(D(s.transport));
 
   const brokerCommission = broker
@@ -144,8 +118,10 @@ function enrichSale(
     buyerName: buyer?.name ?? "",
     brokerName: broker?.name ?? null,
     ...totals,
-    avgCostPerKg,
+    avgCostPerKg: costPerKg,
     cogs,
+    uncostedBags,
+    uncosted: uncostedBags > 0,
     brokerCommission,
     grossMargin,
     grossMarginPct,
@@ -181,8 +157,9 @@ export const salesRouter = router({
 
     if (rows.length === 0) return [];
 
-    // Batch-load all related entities (4 queries instead of 5N)
-    const [productMap, contactMap, linkedMap, avgCostMap] = await Promise.all([
+    // Batch-load all related entities. FIFO costing replays the full history of
+    // the products shown (date filter can't apply — earlier sales consume layers).
+    const [productMap, contactMap, linkedMap, costingMap] = await Promise.all([
       loadProductMap(ctx.db, ctx.tenantId, rows.map((r) => r.productId)),
       loadContactMap(
         ctx.db,
@@ -194,7 +171,7 @@ export const salesRouter = router({
         ctx.tenantId,
         rows.map((r) => r.displayId)
       ),
-      loadAvgCosts(
+      loadSaleCostingMap(
         ctx.db,
         ctx.tenantId,
         rows.map((r) => r.productId)
@@ -208,7 +185,7 @@ export const salesRouter = router({
         contactMap.get(s.buyerId),
         s.brokerId ? contactMap.get(s.brokerId) : null,
         linkedMap.get(s.displayId) ?? 0,
-        avgCostMap.get(s.productId) ?? 0
+        costingMap.get(s.id)
       )
     );
   }),
@@ -225,7 +202,7 @@ export const salesRouter = router({
         .then((r: any[]) => r[0]);
       if (!s) return null;
 
-      const [productMap, contactMap, linkedMap, avgCostMap] = await Promise.all([
+      const [productMap, contactMap, linkedMap, costingMap] = await Promise.all([
         loadProductMap(ctx.db, ctx.tenantId, [s.productId]),
         loadContactMap(
           ctx.db,
@@ -233,7 +210,7 @@ export const salesRouter = router({
           [s.buyerId, ...(s.brokerId ? [s.brokerId] : [])]
         ),
         loadLinkedPayments(ctx.db, ctx.tenantId, [s.displayId]),
-        loadAvgCosts(ctx.db, ctx.tenantId, [s.productId]),
+        loadSaleCostingMap(ctx.db, ctx.tenantId, [s.productId]),
       ]);
 
       return enrichSale(
@@ -242,7 +219,7 @@ export const salesRouter = router({
         contactMap.get(s.buyerId),
         s.brokerId ? contactMap.get(s.brokerId) : null,
         linkedMap.get(s.displayId) ?? 0,
-        avgCostMap.get(s.productId) ?? 0
+        costingMap.get(s.id)
       );
     }),
 

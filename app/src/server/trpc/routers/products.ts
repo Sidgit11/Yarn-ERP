@@ -12,6 +12,7 @@ import {
   D,
   toMoney,
 } from "../../services/calculations";
+import { computeSaleCosting, computeFifoInventoryValue } from "../../services/fifoCosting";
 
 export const productsRouter = router({
   list: protectedProcedure
@@ -160,10 +161,16 @@ export const productsRouter = router({
         }
       }
 
+      // avgCostPerKg = weighted-average purchase cost. Shown in the Purchases
+      // summary; COGS/margin below use FIFO, not this average.
       const avgCostPerKg = computeAvgCostPerKg(
         purchaseTotalBase.toString(),
         purchaseTotalKg.toString()
       );
+
+      // FIFO costing for this product (allPurchases/allSales are product-scoped).
+      const fifoCosting = computeSaleCosting(allPurchases, allSales);
+      const fifoInventory = computeFifoInventoryValue(allPurchases, allSales);
 
       // -- Sale summary --
       let saleTotalRevenue = D(0);
@@ -172,6 +179,7 @@ export const productsRouter = router({
       let saleTotalTransport = D(0);
       let saleTotalBrokerCommission = D(0);
       let totalSoldBags = 0;
+      let totalUncostedBags = 0;
       const buyerAgg = new Map<
         string,
         { name: string; count: number; totalRevenue: number; totalKg: number; totalCogs: number; totalTransport: number; totalBrokerComm: number }
@@ -179,7 +187,7 @@ export const productsRouter = router({
 
       for (const s of allSales) {
         const totals = computeSaleTotals(s);
-        const cogs = toMoney(D(avgCostPerKg).mul(totals.totalKg));
+        const cogs = fifoCosting.get(s.id)?.cogs ?? 0;
         const transport = toMoney(D(s.transport));
         const broker = s.brokerId ? contactMap.get(s.brokerId) : null;
         const brokerCommission = broker
@@ -197,6 +205,7 @@ export const productsRouter = router({
         saleTotalTransport = saleTotalTransport.plus(D(transport));
         saleTotalBrokerCommission = saleTotalBrokerCommission.plus(D(brokerCommission));
         totalSoldBags += s.qtyBags;
+        totalUncostedBags += fifoCosting.get(s.id)?.uncostedBags ?? 0;
 
         const buyer = contactMap.get(s.buyerId);
         const buyerName = buyer?.name ?? "Unknown";
@@ -233,7 +242,8 @@ export const productsRouter = router({
       const totalSoldKg = toMoney(saleTotalKg);
       const bagsInHand = totalPurchasedBags - totalSoldBags;
       const kgInHand = toMoney(purchaseTotalKg.minus(saleTotalKg));
-      const inventoryValue = toMoney(D(kgInHand).mul(D(avgCostPerKg)));
+      // Value remaining stock from un-consumed FIFO layers (never negative).
+      const inventoryValue = fifoInventory.get(product.id)?.remainingValue ?? 0;
 
       // -- Per-buyer breakdown --
       const buyers = Array.from(buyerAgg.values()).map((b) => {
@@ -269,7 +279,7 @@ export const productsRouter = router({
       const recentSales = allSales.slice(0, 5).map((s: any) => {
         const totals = computeSaleTotals(s);
         const buyer = contactMap.get(s.buyerId);
-        const cogs = toMoney(D(avgCostPerKg).mul(totals.totalKg));
+        const cogs = fifoCosting.get(s.id)?.cogs ?? 0;
         const transport = toMoney(D(s.transport));
         const broker = s.brokerId ? contactMap.get(s.brokerId) : null;
         const brokerComm = broker
@@ -328,6 +338,7 @@ export const productsRouter = router({
           totalBrokerCommission: toMoney(saleTotalBrokerCommission),
           grossMargin,
           grossMarginPct,
+          uncostedBags: totalUncostedBags,
           buyers,
         },
 

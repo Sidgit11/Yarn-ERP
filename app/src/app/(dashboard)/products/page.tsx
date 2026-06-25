@@ -15,6 +15,7 @@ import {
   Trash2,
   ToggleLeft,
   ToggleRight,
+  AlertTriangle,
 } from "lucide-react";
 
 type FibreType = (typeof FIBRE_TYPES)[number];
@@ -175,7 +176,7 @@ function ProductDetail({
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[#6C757D]">Gross Margin</span>
+            <span className="text-[#6C757D]">Gross Margin (FIFO)</span>
             <span
               className={cn(
                 "font-semibold",
@@ -185,6 +186,14 @@ function ProductDetail({
               {formatIndianCurrency(sales.grossMargin)} ({Number(sales.grossMarginPct).toFixed(1)}%)
             </span>
           </div>
+          {sales.uncostedBags > 0 && (
+            <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>
+                {sales.uncostedBags} {sales.uncostedBags === 1 ? "bag" : "bags"} uncosted — sold more than purchased, so margin is overstated.
+              </span>
+            </div>
+          )}
           {sales.buyers.length > 0 && (
             <div className="mt-2">
               <span className="text-[#6C757D] text-xs font-medium flex items-center gap-1">

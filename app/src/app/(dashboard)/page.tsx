@@ -436,7 +436,7 @@ export default function DashboardPage() {
           <MetricRow label="Revenue (excl GST)" value={formatIndianCurrency(margins.revenue)}
             explainer={{ title: "Revenue", description: "Total sales before GST.", formula: "Sum of (qty x rate)" }} />
           <MetricRow label="Cost of Goods" value={formatIndianCurrency(margins.cogs)}
-            explainer={{ title: "COGS", description: "Purchase cost of yarn sold (weighted avg)." }} />
+            explainer={{ title: "COGS", description: "Purchase cost of yarn sold, FIFO (oldest stock first)." }} />
           <MetricRow label="Transport" value={formatIndianCurrency(margins.transport)} />
           <MetricRow label="Broker Commission" value={formatIndianCurrency(margins.brokerCommission)} />
           <HeavySeparator />
@@ -450,6 +450,14 @@ export default function DashboardPage() {
               <MetricExplainer title="Gross Margin" description="Trading profit before CC interest." formula="Revenue - COGS - Transport - Commission" />
             </div>
           </div>
+          {margins.uncostedBags > 0 && (
+            <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-1">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+              <span>
+                {margins.uncostedBags} {margins.uncostedBags === 1 ? "bag" : "bags"} sold beyond purchased stock — margin overstated until the missing purchases are added.
+              </span>
+            </div>
+          )}
           <MetricRow label="CC Interest (actual)" value={formatIndianCurrency(margins.ccInterest)} />
           <Separator />
           <div className="flex items-center justify-between py-1.5 font-bold">

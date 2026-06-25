@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { AlertTriangle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { LOOKBACK_PRESETS, TrendsBucket, useTrendsView } from "@/lib/useTrendsView";
 
@@ -95,6 +96,15 @@ export default function TrendsPage() {
           ))}
         </div>
       ) : (
+        <>
+        {data.uncostedBags?.some((n) => n > 0) && (
+          <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <span>
+              Some periods sold more bags than were purchased (FIFO ran dry), so their margin is overstated. Add the missing purchases to correct it.
+            </span>
+          </div>
+        )}
         <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${isFetching ? "opacity-70" : ""}`}>
           <TrendChart
             title="Revenue"
@@ -170,6 +180,7 @@ export default function TrendsPage() {
             emptyHint="No payments in this window."
           />
         </div>
+        </>
       )}
     </div>
   );

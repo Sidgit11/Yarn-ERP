@@ -13,6 +13,7 @@ import {
   D,
   toMoney,
 } from "../../services/calculations";
+import { computeSaleCosting, computeFifoInventoryValue } from "../../services/fifoCosting";
 
 const dateRangeInput = z
   .object({
@@ -56,6 +57,10 @@ export const dashboardRouter = router({
     const t1 = performance.now();
     console.log(`[dashboard] DB parallel load — ${(t1 - t0).toFixed(1)}ms (rows: ${allPurchases.length}P, ${allSales.length}S, ${allPayments.length}Pay, ${ccEntriesAll.length}CC, ${allProducts.length}Prod)`);
 
+    // FIFO costing: per-sale COGS and per-product remaining inventory value.
+    const fifoCosting = computeSaleCosting(allPurchases, allSales);
+    const fifoInventory = computeFifoInventoryValue(allPurchases, allSales);
+
     // ── CC Position ───────────────────────────────────────────────────────
     const ccLimit = cfg ? parseFloat(cfg.ccLimit) : 5000000;
     const ccRate = cfg ? parseFloat(cfg.ccInterestRate) : 11;
@@ -78,7 +83,6 @@ export const dashboardRouter = router({
     let periodPurchaseGst = D(0);
     let periodPurchaseTransport = D(0);
     let periodPurchasesCount = 0;
-    const productPurchases: Record<string, { totalBase: number; totalKg: number }> = {};
 
     for (const p of allPurchases) {
       const t = computePurchaseTotals(p);
@@ -87,14 +91,6 @@ export const dashboardRouter = router({
       totalPurchaseGrand = totalPurchaseGrand.plus(t.grandTotal);
       totalPurchasePaid = totalPurchasePaid.plus(D(p.amountPaid));
       totalPurchaseTransport = totalPurchaseTransport.plus(D(p.transport));
-
-      // productPurchases always uses all-time data so avgCost (weighted
-      // across the full purchase history) stays correct even when filtering.
-      if (!productPurchases[p.productId]) {
-        productPurchases[p.productId] = { totalBase: 0, totalKg: 0 };
-      }
-      productPurchases[p.productId].totalBase += t.baseAmount;
-      productPurchases[p.productId].totalKg += t.totalKg;
 
       if (inRange(p.date)) {
         periodPurchaseBase = periodPurchaseBase.plus(t.baseAmount);
@@ -133,6 +129,9 @@ export const dashboardRouter = router({
     let periodCogs = D(0);
     let periodSaleBrokerCommission = D(0);
     let periodSalesCount = 0;
+    // Bags sold beyond available purchased stock (FIFO ran out) — surfaced as a
+    // data-quality warning since their margin is overstated (no cost attributed).
+    let periodUncostedBags = 0;
 
     for (const s of allSales) {
       const t = computeSaleTotals(s);
@@ -142,10 +141,10 @@ export const dashboardRouter = router({
       totalSaleReceived = totalSaleReceived.plus(D(s.amountReceived));
       totalSaleTransport = totalSaleTransport.plus(D(s.transport));
 
-      // COGS using weighted average
-      const pp = productPurchases[s.productId];
-      const avgCost = pp && pp.totalKg > 0 ? pp.totalBase / pp.totalKg : 0;
-      const cogs = D(avgCost).mul(t.totalKg);
+      // COGS using FIFO (oldest purchase layers first)
+      const saleCosting = fifoCosting.get(s.id);
+      const cogs = D(saleCosting?.cogs ?? 0);
+      const uncostedBags = saleCosting?.uncostedBags ?? 0;
       totalCogs = totalCogs.plus(cogs);
 
       // Broker commission
@@ -169,6 +168,7 @@ export const dashboardRouter = router({
         periodSaleTransport = periodSaleTransport.plus(D(s.transport));
         periodCogs = periodCogs.plus(cogs);
         periodSaleBrokerCommission = periodSaleBrokerCommission.plus(brokerCommission);
+        periodUncostedBags += uncostedBags;
         periodSalesCount++;
       }
     }
@@ -353,19 +353,12 @@ export const dashboardRouter = router({
     const inventory = allInventory.filter((i) => i.bagsInHand > 0);
     const negativeInventory = allInventory.filter((i) => i.bagsInHand < 0);
 
-    // Compute cashInInventory per-product (only positive stock × avg cost)
-    // This avoids the bug where negative inventory products (sold > bought)
-    // cause the global formula (totalPurchaseBase - totalCogs) to undercount.
+    // cashInInventory = value of the un-consumed FIFO layers (newest stock on
+    // hand). Reconciles with FIFO COGS: purchaseBase = soldAtCost + stockAtCost.
+    // Never negative — oversold products contribute 0, not a negative value.
     let cashInInventory = D(0);
-    for (const prod of allProducts) {
-      const bought = purchasesByProduct[prod.id] ?? { bags: 0, kg: 0 };
-      const sold = salesByProduct[prod.id] ?? { bags: 0, kg: 0 };
-      const kgInHand = bought.kg - sold.kg;
-      if (kgInHand > 0) {
-        const pp = productPurchases[prod.id];
-        const avgCost = pp && pp.totalKg > 0 ? pp.totalBase / pp.totalKg : 0;
-        cashInInventory = cashInInventory.plus(D(avgCost).mul(kgInHand));
-      }
+    for (const inv of fifoInventory.values()) {
+      cashInInventory = cashInInventory.plus(inv.remainingValue);
     }
 
     // All-time net GST (used for money.gstNet — as-of position).
@@ -442,6 +435,9 @@ export const dashboardRouter = router({
         ccInterest: toMoney(D(actualInterest)),
         netMargin: toMoney(periodNetMargin),
         netMarginPct: toMoney(periodNetMarginPct),
+        // > 0 means some sales drew on more bags than were purchased (FIFO ran
+        // dry); their margin is overstated until the data is corrected.
+        uncostedBags: periodUncostedBags,
       },
       inventory,
       negativeInventory,

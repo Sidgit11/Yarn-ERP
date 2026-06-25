@@ -273,6 +273,15 @@ export default function SalesPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {s.uncosted && (
+                    <span
+                      title={`${s.uncostedBags} bags sold beyond purchased stock — margin overstated`}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                    >
+                      <AlertTriangle size={10} />
+                      Uncosted
+                    </span>
+                  )}
                   <span
                     className={`text-xs font-semibold ${
                       s.grossMargin >= 0 ? "text-[#1E8449]" : "text-[#922B21]"
@@ -398,13 +407,21 @@ export default function SalesPage() {
                   <div className="text-sm space-y-1 mb-3">
                     <h4 className="text-xs font-semibold text-[#6C757D] uppercase tracking-wide mb-1">Margin Breakdown</h4>
                     <div className="flex justify-between">
-                      <span className="text-[#6C757D]">Avg Cost</span>
+                      <span className="text-[#6C757D]">FIFO Cost</span>
                       <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.avgCostPerKg)}/kg</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#6C757D]">COGS</span>
+                      <span className="text-[#6C757D]">COGS (FIFO)</span>
                       <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(s.cogs)}</span>
                     </div>
+                    {s.uncosted && (
+                      <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1">
+                        <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                        <span>
+                          {s.uncostedBags} {s.uncostedBags === 1 ? "bag" : "bags"} uncosted — sold more than purchased, so margin is overstated. Add the missing purchase to fix.
+                        </span>
+                      </div>
+                    )}
                     {Number(s.brokerCommission) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-[#6C757D]">Broker Commission</span>
