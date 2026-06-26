@@ -436,6 +436,9 @@ export default function SalesPage() {
                     </div>
                   </div>
 
+                  {/* Fulfilled from (FIFO lots) — lazy-loaded on expand */}
+                  <FulfilledFrom saleId={s.id} />
+
                   {/* Collection Status */}
                   <div className="text-sm space-y-1 mb-3">
                     <h4 className="text-xs font-semibold text-[#6C757D] uppercase tracking-wide mb-1">Collection Status</h4>
@@ -523,6 +526,29 @@ export default function SalesPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FulfilledFrom({ saleId }: { saleId: string }) {
+  const { data, isLoading } = trpc.sales.fulfilledFrom.useQuery({ saleId });
+  if (isLoading) return <div className="text-xs text-gray-400 mb-3">Loading lot trace…</div>;
+  if (!data || (data.lots.length === 0 && data.uncostedBags === 0)) return null;
+  return (
+    <div className="text-sm space-y-1 mb-3">
+      <h4 className="text-xs font-semibold text-[#6C757D] uppercase tracking-wide mb-1">Fulfilled From</h4>
+      {data.lots.map((l) => (
+        <div key={l.lot} className="flex justify-between">
+          <span className="text-[#6C757D]">{l.bags} bags · {l.lot}</span>
+          <span className="text-[#2C3E50] font-medium">{formatIndianCurrency(l.ratePerKg)}/kg</span>
+        </div>
+      ))}
+      {data.uncostedBags > 0 && (
+        <div className="flex items-start gap-1.5 text-xs text-amber-700">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>{data.uncostedBags} bags had no purchase lot (sold beyond stock).</span>
         </div>
       )}
     </div>

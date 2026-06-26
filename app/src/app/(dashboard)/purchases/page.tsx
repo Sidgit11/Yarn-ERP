@@ -330,6 +330,9 @@ export default function PurchasesPage() {
                     </div>
                   </div>
 
+                  {/* Sold to (FIFO consumers of this lot) — lazy-loaded on expand */}
+                  <SoldTo purchaseId={p.id} />
+
                   {/* Payment status */}
                   <div className="bg-[#F8F9FA] rounded-lg px-3 py-2 text-sm space-y-1 mb-3">
                     <div className="flex justify-between">
@@ -419,6 +422,35 @@ export default function PurchasesPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SoldTo({ purchaseId }: { purchaseId: string }) {
+  const { data, isLoading } = trpc.purchases.soldTo.useQuery({ purchaseId });
+  if (isLoading) return <div className="text-xs text-gray-400 mb-3">Loading lot trace…</div>;
+  if (!data || data.consumers.length === 0) {
+    return (
+      <div className="bg-[#F8F9FA] rounded-lg px-3 py-2 text-sm mb-3">
+        <h4 className="text-xs font-semibold text-[#6C757D] uppercase tracking-wide mb-1">Sold To</h4>
+        <p className="text-xs text-gray-500">None of this lot has been sold yet ({data?.remainingBags ?? 0} bags in stock).</p>
+      </div>
+    );
+  }
+  return (
+    <div className="bg-[#F8F9FA] rounded-lg px-3 py-2 text-sm space-y-1 mb-3">
+      <h4 className="text-xs font-semibold text-[#6C757D] uppercase tracking-wide mb-1">Sold To (FIFO)</h4>
+      {data.consumers.map((c, i) => (
+        <div key={i} className="flex justify-between">
+          <span className="text-[#6C757D]">{c.bags} bags · {c.buyerName}</span>
+          <span className="text-[#2C3E50] font-medium">{c.sale}</span>
+        </div>
+      ))}
+      {data.remainingBags > 0 && (
+        <div className="flex justify-between text-[#1E8449] pt-0.5">
+          <span>{data.remainingBags} bags still in stock</span>
         </div>
       )}
     </div>

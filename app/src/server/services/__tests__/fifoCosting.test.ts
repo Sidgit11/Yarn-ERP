@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { computeSaleCosting, computeFifoInventoryValue } from "../fifoCosting";
+import {
+  computeSaleCosting,
+  computeFifoInventoryValue,
+  computeFifoAllocations,
+} from "../fifoCosting";
 
 // Helpers to build minimal rows. ratePerKg / kgPerBag arrive as strings from the DB.
 function purchase(o: {
@@ -226,5 +230,151 @@ describe("computeFifoInventoryValue", () => {
     expect(cogs).toBe(1150000);
     expect(remaining).toBe(600000);
     expect(cogs + remaining).toBe(1750000);
+  });
+});
+
+// Allocation rows carry display ids + buyer so the draw matrix can name lots/customers.
+function aPurchase(o: {
+  id: string;
+  displayId: string;
+  productId?: string;
+  date: string;
+  qtyBags: number;
+  kgPerBag?: number | string;
+  ratePerKg: number | string;
+  createdAt?: string;
+}) {
+  return {
+    id: o.id,
+    displayId: o.displayId,
+    productId: o.productId ?? "prod-1",
+    date: o.date,
+    qtyBags: o.qtyBags,
+    kgPerBag: o.kgPerBag ?? 100,
+    ratePerKg: o.ratePerKg,
+    createdAt: o.createdAt ?? o.date,
+  };
+}
+function aSale(o: {
+  id: string;
+  displayId: string;
+  buyerId: string;
+  productId?: string;
+  date: string;
+  qtyBags: number;
+  createdAt?: string;
+}) {
+  return {
+    id: o.id,
+    displayId: o.displayId,
+    buyerId: o.buyerId,
+    productId: o.productId ?? "prod-1",
+    date: o.date,
+    qtyBags: o.qtyBags,
+    createdAt: o.createdAt ?? o.date,
+  };
+}
+
+describe("computeFifoAllocations", () => {
+  it("produces a draw per sale↔lot pairing for the 30/20/50 split", () => {
+    const purchases = [
+      aPurchase({ id: "p1", displayId: "P1", date: "2026-01-01", qtyBags: 50, ratePerKg: 150 }), // 15000/bag
+      aPurchase({ id: "p2", displayId: "P2", date: "2026-01-02", qtyBags: 50, ratePerKg: 200 }), // 20000/bag
+    ];
+    const sales = [
+      aSale({ id: "s1", displayId: "S1", buyerId: "B1", date: "2026-01-10", qtyBags: 30 }),
+      aSale({ id: "s2", displayId: "S2", buyerId: "B2", date: "2026-01-11", qtyBags: 20 }),
+      aSale({ id: "s3", displayId: "S3", buyerId: "B3", date: "2026-01-12", qtyBags: 50 }),
+    ];
+
+    const { draws } = computeFifoAllocations(purchases, sales);
+
+    expect(draws).toEqual([
+      { saleId: "s1", saleDisplayId: "S1", buyerId: "B1", purchaseId: "p1", purchaseDisplayId: "P1", bags: 30, costPerBag: 15000, ratePerKg: 150, purchaseDate: "2026-01-01" },
+      { saleId: "s2", saleDisplayId: "S2", buyerId: "B2", purchaseId: "p1", purchaseDisplayId: "P1", bags: 20, costPerBag: 15000, ratePerKg: 150, purchaseDate: "2026-01-01" },
+      { saleId: "s3", saleDisplayId: "S3", buyerId: "B3", purchaseId: "p2", purchaseDisplayId: "P2", bags: 50, costPerBag: 20000, ratePerKg: 200, purchaseDate: "2026-01-02" },
+    ]);
+  });
+
+  it("splits one sale across two lots into two draws", () => {
+    const purchases = [
+      aPurchase({ id: "p1", displayId: "P1", date: "2026-01-01", qtyBags: 50, ratePerKg: 150 }),
+      aPurchase({ id: "p2", displayId: "P2", date: "2026-01-02", qtyBags: 50, ratePerKg: 200 }),
+    ];
+    const sales = [aSale({ id: "s1", displayId: "S1", buyerId: "B1", date: "2026-01-10", qtyBags: 60 })];
+
+    const { draws } = computeFifoAllocations(purchases, sales);
+
+    expect(draws.map((d) => [d.purchaseDisplayId, d.bags])).toEqual([
+      ["P1", 50],
+      ["P2", 10],
+    ]);
+  });
+
+  it("reports remaining bags per lot", () => {
+    const purchases = [
+      aPurchase({ id: "p1", displayId: "P1", date: "2026-01-01", qtyBags: 50, ratePerKg: 150 }),
+      aPurchase({ id: "p2", displayId: "P2", date: "2026-01-02", qtyBags: 50, ratePerKg: 200 }),
+    ];
+    const sales = [aSale({ id: "s1", displayId: "S1", buyerId: "B1", date: "2026-01-10", qtyBags: 60 })];
+
+    const { remainingByLot } = computeFifoAllocations(purchases, sales);
+
+    expect(remainingByLot.get("P1")).toBe(0);
+    expect(remainingByLot.get("P2")).toBe(40);
+  });
+
+  it("records oversold bags as uncosted, not a phantom draw", () => {
+    const purchases = [
+      aPurchase({ id: "p1", displayId: "P1", date: "2026-01-01", qtyBags: 50, ratePerKg: 150 }),
+    ];
+    const sales = [aSale({ id: "s1", displayId: "S1", buyerId: "B1", date: "2026-01-10", qtyBags: 80 })];
+
+    const { draws, uncostedBySale } = computeFifoAllocations(purchases, sales);
+
+    expect(draws).toEqual([
+      { saleId: "s1", saleDisplayId: "S1", buyerId: "B1", purchaseId: "p1", purchaseDisplayId: "P1", bags: 50, costPerBag: 15000, ratePerKg: 150, purchaseDate: "2026-01-01" },
+    ]);
+    expect(uncostedBySale.get("s1")).toBe(30);
+  });
+
+  it("keeps products isolated", () => {
+    const purchases = [
+      aPurchase({ id: "px", displayId: "PX", productId: "X", date: "2026-01-01", qtyBags: 10, ratePerKg: 100 }),
+      aPurchase({ id: "py", displayId: "PY", productId: "Y", date: "2026-01-01", qtyBags: 10, ratePerKg: 300 }),
+    ];
+    const sales = [
+      aSale({ id: "sx", displayId: "SX", buyerId: "BX", productId: "X", date: "2026-01-10", qtyBags: 5 }),
+      aSale({ id: "sy", displayId: "SY", buyerId: "BY", productId: "Y", date: "2026-01-10", qtyBags: 5 }),
+    ];
+
+    const { draws } = computeFifoAllocations(purchases, sales);
+    const sx = draws.filter((d) => d.saleId === "sx");
+    const sy = draws.filter((d) => d.saleId === "sy");
+
+    expect(sx).toHaveLength(1);
+    expect(sx[0].purchaseDisplayId).toBe("PX");
+    expect(sy[0].purchaseDisplayId).toBe("PY");
+  });
+
+  it("reconciles: each sale's draws sum to its COGS from computeSaleCosting", () => {
+    const purchases = [
+      aPurchase({ id: "p1", displayId: "P1", date: "2026-01-01", qtyBags: 50, ratePerKg: 150 }),
+      aPurchase({ id: "p2", displayId: "P2", date: "2026-01-02", qtyBags: 50, ratePerKg: 200 }),
+    ];
+    const sales = [
+      aSale({ id: "s1", displayId: "S1", buyerId: "B1", date: "2026-01-10", qtyBags: 30 }),
+      aSale({ id: "s2", displayId: "S2", buyerId: "B2", date: "2026-01-11", qtyBags: 40 }),
+    ];
+
+    const { draws } = computeFifoAllocations(purchases, sales);
+    const costing = computeSaleCosting(purchases, sales);
+
+    for (const saleId of ["s1", "s2"]) {
+      const drawSum = draws
+        .filter((d) => d.saleId === saleId)
+        .reduce((acc, d) => acc + d.bags * d.costPerBag, 0);
+      expect(drawSum).toBe(costing.get(saleId)!.cogs);
+    }
   });
 });

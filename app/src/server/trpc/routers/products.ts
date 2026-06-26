@@ -12,7 +12,7 @@ import {
   D,
   toMoney,
 } from "../../services/calculations";
-import { computeSaleCosting, computeFifoInventoryValue } from "../../services/fifoCosting";
+import { computeSaleCosting, computeFifoInventoryValue, computeFifoAllocations } from "../../services/fifoCosting";
 
 export const productsRouter = router({
   list: protectedProcedure
@@ -171,6 +171,21 @@ export const productsRouter = router({
       // FIFO costing for this product (allPurchases/allSales are product-scoped).
       const fifoCosting = computeSaleCosting(allPurchases, allSales);
       const fifoInventory = computeFifoInventoryValue(allPurchases, allSales);
+      // Full lot↔sale allocation matrix (traceability). Same loaded rows, no extra query.
+      const alloc = computeFifoAllocations(allPurchases, allSales);
+      // Lots each buyer drew from (for the per-customer enrichment), keyed by buyerId.
+      const lotsByBuyer = new Map<string, Map<string, number>>();
+      // Draws of each sale (for the recent-sales "fulfilled from"), keyed by saleId.
+      const drawsBySale = new Map<string, typeof alloc.draws>();
+      for (const d of alloc.draws) {
+        const byLot = lotsByBuyer.get(d.buyerId) ?? new Map<string, number>();
+        const k = `${d.purchaseDisplayId}@${d.ratePerKg}`;
+        byLot.set(k, (byLot.get(k) ?? 0) + d.bags);
+        lotsByBuyer.set(d.buyerId, byLot);
+        const arr = drawsBySale.get(d.saleId) ?? [];
+        arr.push(d);
+        drawsBySale.set(d.saleId, arr);
+      }
 
       // -- Sale summary --
       let saleTotalRevenue = D(0);
@@ -245,22 +260,60 @@ export const productsRouter = router({
       // Value remaining stock from un-consumed FIFO layers (never negative).
       const inventoryValue = fifoInventory.get(product.id)?.remainingValue ?? 0;
 
-      // -- Per-buyer breakdown --
-      const buyers = Array.from(buyerAgg.values()).map((b) => {
+      // -- Per-buyer breakdown (with FIFO cost + lots drawn from) --
+      const buyers = Array.from(buyerAgg.entries()).map(([buyerId, b]) => {
         const margin = toMoney(
           D(b.totalRevenue).minus(D(b.totalCogs)).minus(D(b.totalTransport)).minus(D(b.totalBrokerComm))
         );
         const marginPct = b.totalRevenue > 0 ? toMoney(D(margin).div(D(b.totalRevenue)).mul(100)) : 0;
+        const lotsMap = lotsByBuyer.get(buyerId);
+        const lots = lotsMap
+          ? Array.from(lotsMap.entries()).map(([k, bags]) => ({
+              lot: k.split("@")[0],
+              ratePerKg: Number(k.split("@")[1]),
+              bags,
+            }))
+          : [];
         return {
           name: b.name,
           count: b.count,
           totalRevenue: b.totalRevenue,
           totalKg: b.totalKg,
           avgPrice: b.totalKg > 0 ? toMoney(D(b.totalRevenue).div(D(b.totalKg))) : 0,
+          avgFifoCostPerKg: b.totalKg > 0 ? toMoney(D(b.totalCogs).div(D(b.totalKg))) : 0,
           grossMargin: margin,
           grossMarginPct: marginPct,
+          lots,
         };
       });
+
+      // -- Lot ledger: each purchase lot → which sales/customers consumed it --
+      const drawsByLot = new Map<string, typeof alloc.draws>();
+      for (const d of alloc.draws) {
+        const arr = drawsByLot.get(d.purchaseDisplayId) ?? [];
+        arr.push(d);
+        drawsByLot.set(d.purchaseDisplayId, arr);
+      }
+      const lotLedger = allPurchases
+        .slice()
+        .sort(
+          (a: any, b: any) =>
+            a.date.localeCompare(b.date) ||
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() ||
+            a.id.localeCompare(b.id)
+        )
+        .map((p: any) => ({
+          lot: p.displayId,
+          date: p.date,
+          qtyBags: p.qtyBags,
+          ratePerKg: Number(p.ratePerKg),
+          remainingBags: alloc.remainingByLot.get(p.displayId) ?? 0,
+          consumers: (drawsByLot.get(p.displayId) ?? []).map((d) => ({
+            sale: d.saleDisplayId,
+            buyerName: contactMap.get(d.buyerId)?.name ?? "Unknown",
+            bags: d.bags,
+          })),
+        }));
 
       // -- Recent transactions (last 5 of each) --
       const recentPurchases = allPurchases.slice(0, 5).map((p: any) => {
@@ -292,6 +345,11 @@ export const productsRouter = router({
           : 0;
         const margin = toMoney(D(totals.baseAmount).minus(D(cogs)).minus(D(transport)).minus(D(brokerComm)));
         const marginPct = totals.baseAmount > 0 ? toMoney(D(margin).div(D(totals.baseAmount)).mul(100)) : 0;
+        const fulfilledFrom = (drawsBySale.get(s.id) ?? []).map((d) => ({
+          lot: d.purchaseDisplayId,
+          bags: d.bags,
+          ratePerKg: d.ratePerKg,
+        }));
         return {
           displayId: s.displayId,
           date: s.date,
@@ -300,6 +358,8 @@ export const productsRouter = router({
           ratePerKg: s.ratePerKg,
           grossMargin: margin,
           grossMarginPct: marginPct,
+          fulfilledFrom,
+          uncostedBags: fifoCosting.get(s.id)?.uncostedBags ?? 0,
         };
       });
 
@@ -344,6 +404,7 @@ export const productsRouter = router({
 
         recentPurchases,
         recentSales,
+        lotLedger,
       };
     }),
 

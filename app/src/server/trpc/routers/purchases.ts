@@ -13,6 +13,7 @@ import {
   D,
   toMoney,
 } from "../../services/calculations";
+import { loadProductAllocations } from "../../services/fifoCostingDb";
 
 // ── Batch helpers ───────────────────────────────────────────────────────────
 
@@ -188,6 +189,36 @@ export const purchasesRouter = router({
         p.brokerId ? contactMap.get(p.brokerId) : null,
         linkedMap.get(p.displayId) ?? 0
       );
+    }),
+
+  // Lazy traceability: which customers/sales consumed this lot's bags, and how
+  // many remain in stock. Loaded on demand when a purchase row is expanded.
+  soldTo: protectedProcedure
+    .input(z.object({ purchaseId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const p = await ctx.db
+        .select({ id: purchases.id, productId: purchases.productId, displayId: purchases.displayId, qtyBags: purchases.qtyBags })
+        .from(purchases)
+        .where(and(eq(purchases.id, input.purchaseId), eq(purchases.tenantId, ctx.tenantId)))
+        .then((r: any[]) => r[0]);
+      if (!p) return { consumers: [], remainingBags: 0, totalBags: 0 };
+
+      const alloc = await loadProductAllocations(ctx.db, ctx.tenantId, p.productId);
+      const lotDraws = alloc.draws.filter((d) => d.purchaseDisplayId === p.displayId);
+
+      const buyerIds = [...new Set(lotDraws.map((d) => d.buyerId))];
+      const buyerMap = await loadContactMap(ctx.db, ctx.tenantId, buyerIds);
+
+      const consumers = lotDraws.map((d) => ({
+        sale: d.saleDisplayId,
+        buyerName: buyerMap.get(d.buyerId)?.name ?? "Unknown",
+        bags: d.bags,
+      }));
+      return {
+        consumers,
+        remainingBags: alloc.remainingByLot.get(p.displayId) ?? 0,
+        totalBags: p.qtyBags,
+      };
     }),
 
   avgCostByProduct: protectedProcedure

@@ -14,7 +14,7 @@ import {
   D,
   toMoney,
 } from "../../services/calculations";
-import { loadSaleCostingMap } from "../../services/fifoCostingDb";
+import { loadSaleCostingMap, loadProductAllocations } from "../../services/fifoCostingDb";
 import type { SaleCosting } from "../../services/fifoCosting";
 
 // ── Batch helpers (shared pattern) ──────────────────────────────────────────
@@ -221,6 +221,31 @@ export const salesRouter = router({
         linkedMap.get(s.displayId) ?? 0,
         costingMap.get(s.id)
       );
+    }),
+
+  // Lazy traceability: which purchase lot(s) fulfilled this sale, oldest-first.
+  // Loaded on demand when a sale row is expanded, to keep the list payload lean.
+  fulfilledFrom: protectedProcedure
+    .input(z.object({ saleId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const s = await ctx.db
+        .select({ id: sales.id, productId: sales.productId })
+        .from(sales)
+        .where(and(eq(sales.id, input.saleId), eq(sales.tenantId, ctx.tenantId)))
+        .then((r: any[]) => r[0]);
+      if (!s) return { lots: [], uncostedBags: 0 };
+
+      const alloc = await loadProductAllocations(ctx.db, ctx.tenantId, s.productId);
+      const lots = alloc.draws
+        .filter((d) => d.saleId === input.saleId)
+        .map((d) => ({
+          lot: d.purchaseDisplayId,
+          bags: d.bags,
+          ratePerKg: d.ratePerKg,
+          costPerBag: d.costPerBag,
+          purchaseDate: d.purchaseDate,
+        }));
+      return { lots, uncostedBags: alloc.uncostedBySale.get(input.saleId) ?? 0 };
     }),
 
   create: protectedProcedure

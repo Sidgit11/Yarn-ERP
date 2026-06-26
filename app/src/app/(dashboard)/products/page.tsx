@@ -78,7 +78,7 @@ function ProductDetail({
     return <DetailSkeleton />;
   }
 
-  const { inventory, purchases, sales, recentPurchases, recentSales } = detail;
+  const { inventory, purchases, sales, recentPurchases, recentSales, lotLedger } = detail;
 
   return (
     <div className="pt-4 space-y-5 border-t border-gray-100 mt-4">
@@ -213,6 +213,10 @@ function ProductDetail({
                       </span>
                     </div>
                     <div className="flex justify-between mt-0.5">
+                      <span className="text-[#6C757D]">Avg FIFO cost</span>
+                      <span className="text-[#2C3E50]">{formatIndianCurrency(b.avgFifoCostPerKg)}/kg</span>
+                    </div>
+                    <div className="flex justify-between mt-0.5">
                       <span className="text-[#6C757D]">Margin</span>
                       <span
                         className={cn(
@@ -223,6 +227,11 @@ function ProductDetail({
                         {formatIndianCurrency(b.grossMargin)} ({Number(b.grossMarginPct).toFixed(1)}%)
                       </span>
                     </div>
+                    {b.lots.length > 0 && (
+                      <div className="text-[10px] text-[#6C757D] mt-0.5">
+                        from {b.lots.map((l) => `${l.bags}×${l.lot} @₹${l.ratePerKg}`).join(", ")}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -230,6 +239,9 @@ function ProductDetail({
           )}
         </div>
       </div>
+
+      {/* Section C2: Stock flow (FIFO lot ledger) — collapsed by default */}
+      {lotLedger.length > 0 && <LotLedger lotLedger={lotLedger} />}
 
       {/* Section D: Recent Transactions */}
       {(recentPurchases.length > 0 || recentSales.length > 0) && (
@@ -272,30 +284,35 @@ function ProductDetail({
                 </span>
                 <div className="mt-1 space-y-0.5">
                   {recentSales.map((s, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between text-xs px-2.5 py-1.5 bg-[#F8F9FA] rounded-lg"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-[#ADB5BD] font-mono text-[10px]">
-                          {s.displayId}
-                        </span>
-                        <span className="text-[#2C3E50]">{s.buyerName}</span>
+                    <div key={i} className="px-2.5 py-1.5 bg-[#F8F9FA] rounded-lg">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#ADB5BD] font-mono text-[10px]">
+                            {s.displayId}
+                          </span>
+                          <span className="text-[#2C3E50]">{s.buyerName}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[#6C757D]">
+                          <span>{s.qtyBags} bags</span>
+                          <span
+                            className={cn(
+                              "font-medium",
+                              Number(s.grossMargin) >= 0
+                                ? "text-[#1E8449]"
+                                : "text-[#E74C3C]"
+                            )}
+                          >
+                            {formatIndianCurrency(s.grossMargin)} ({Number(s.grossMarginPct).toFixed(1)}%)
+                          </span>
+                          <span className="text-[10px]">{formatDate(s.date)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 text-[#6C757D]">
-                        <span>{s.qtyBags} bags</span>
-                        <span
-                          className={cn(
-                            "font-medium",
-                            Number(s.grossMargin) >= 0
-                              ? "text-[#1E8449]"
-                              : "text-[#E74C3C]"
-                          )}
-                        >
-                          {formatIndianCurrency(s.grossMargin)} ({Number(s.grossMarginPct).toFixed(1)}%)
-                        </span>
-                        <span className="text-[10px]">{formatDate(s.date)}</span>
-                      </div>
+                      {s.fulfilledFrom.length > 0 && (
+                        <div className="text-[10px] text-[#6C757D] mt-0.5">
+                          from {s.fulfilledFrom.map((l) => `${l.bags}×${l.lot} @₹${l.ratePerKg}`).join(", ")}
+                          {s.uncostedBags > 0 ? ` · ${s.uncostedBags} uncosted` : ""}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -903,6 +920,59 @@ export default function ProductsPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type LotLedgerRow = {
+  lot: string;
+  date: string;
+  qtyBags: number;
+  ratePerKg: number;
+  remainingBags: number;
+  consumers: { sale: string; buyerName: string; bags: number }[];
+};
+
+function LotLedger({ lotLedger }: { lotLedger: LotLedgerRow[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className="flex items-center gap-1.5 text-xs font-semibold text-[#1B4F72] uppercase tracking-wider mb-2"
+      >
+        {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        Stock Flow — which lot went where (FIFO)
+      </button>
+      {open && (
+        <div className="space-y-2">
+          {lotLedger.map((lot) => (
+            <div key={lot.lot} className="bg-[#F8F9FA] rounded-lg px-2.5 py-2 text-xs">
+              <div className="flex items-center justify-between font-medium text-[#2C3E50]">
+                <span>
+                  <span className="font-mono text-[10px] text-[#ADB5BD] mr-1.5">{lot.lot}</span>
+                  {lot.qtyBags} bags @ ₹{lot.ratePerKg}/kg
+                </span>
+                <span className="text-[10px] text-[#6C757D]">{formatDate(lot.date)}</span>
+              </div>
+              <div className="mt-1 space-y-0.5">
+                {lot.consumers.map((c, i) => (
+                  <div key={i} className="flex justify-between text-[#6C757D]">
+                    <span>→ {c.bags} bags · {c.buyerName}</span>
+                    <span className="font-mono text-[10px]">{c.sale}</span>
+                  </div>
+                ))}
+                {lot.remainingBags > 0 && (
+                  <div className="text-[#1E8449]">• {lot.remainingBags} bags still in stock</div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -13,8 +13,10 @@ import { purchases, sales } from "../db/schema";
 import {
   computeSaleCosting,
   computeFifoInventoryValue,
+  computeFifoAllocations,
   type SaleCosting,
   type InventoryValue,
+  type FifoAllocations,
 } from "./fifoCosting";
 
 const PURCHASE_COLS = {
@@ -66,4 +68,37 @@ export async function loadFifoInventoryMap(
 ): Promise<Map<string, InventoryValue>> {
   const { purchaseRows, saleRows } = await loadHistory(db, tenantId);
   return computeFifoInventoryValue(purchaseRows, saleRows);
+}
+
+const ALLOC_PURCHASE_COLS = { ...PURCHASE_COLS, displayId: purchases.displayId };
+const ALLOC_SALE_COLS = { ...SALE_COLS, displayId: sales.displayId, buyerId: sales.buyerId };
+
+/**
+ * Full FIFO allocation matrix for a single product (which lot fulfilled which sale).
+ * Powers the traceability touchpoints. Loads the product's all-time history.
+ */
+export async function loadProductAllocations(
+  db: any,
+  tenantId: string,
+  productId: string
+): Promise<FifoAllocations> {
+  const [purchaseRows, saleRows] = await Promise.all([
+    db
+      .select(ALLOC_PURCHASE_COLS)
+      .from(purchases)
+      .where(
+        and(
+          eq(purchases.productId, productId),
+          eq(purchases.tenantId, tenantId),
+          isNull(purchases.deletedAt)
+        )
+      ),
+    db
+      .select(ALLOC_SALE_COLS)
+      .from(sales)
+      .where(
+        and(eq(sales.productId, productId), eq(sales.tenantId, tenantId), isNull(sales.deletedAt))
+      ),
+  ]);
+  return computeFifoAllocations(purchaseRows, saleRows);
 }

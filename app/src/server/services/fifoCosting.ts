@@ -170,3 +170,113 @@ export function computeFifoInventoryValue(
 ): Map<string, InventoryValue> {
   return runFifo(purchases, sales).inventoryByProduct;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Allocation matrix — which lot fulfilled which sale (traceability)
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface AllocationPurchase extends CostingPurchase {
+  displayId: string;
+}
+export interface AllocationSale extends CostingSale {
+  displayId: string;
+  buyerId: string;
+}
+
+/** One sale↔lot pairing: `bags` of `purchaseDisplayId` fulfilled `saleDisplayId`. */
+export interface Draw {
+  saleId: string;
+  saleDisplayId: string;
+  buyerId: string;
+  purchaseId: string;
+  purchaseDisplayId: string;
+  bags: number;
+  costPerBag: number;
+  ratePerKg: number;
+  purchaseDate: string;
+}
+
+export interface FifoAllocations {
+  /** Every sale↔lot pairing, in sale-processing order (oldest sale first). */
+  draws: Draw[];
+  /** Bags still in stock per lot, keyed by purchaseDisplayId. */
+  remainingByLot: Map<string, number>;
+  /** Bags sold beyond purchased stock, keyed by sale id. */
+  uncostedBySale: Map<string, number>;
+}
+
+interface AllocLayer {
+  remainingBags: number;
+  costPerBag: Decimal;
+  purchase: AllocationPurchase;
+}
+
+/**
+ * Full FIFO allocation matrix: for each sale, which purchase lot(s) fulfilled it and at
+ * what cost. Powers traceability (sale → fulfilled from, lot → sold to, product ledger).
+ * Uses the same ordering as the costing pass, so the draws reconcile to each sale's COGS.
+ */
+export function computeFifoAllocations(
+  purchases: AllocationPurchase[],
+  sales: AllocationSale[]
+): FifoAllocations {
+  const draws: Draw[] = [];
+  const remainingByLot = new Map<string, number>();
+  const uncostedBySale = new Map<string, number>();
+
+  const purchasesByProduct = new Map<string, AllocationPurchase[]>();
+  for (const p of purchases) {
+    const arr = purchasesByProduct.get(p.productId) ?? [];
+    arr.push(p);
+    purchasesByProduct.set(p.productId, arr);
+  }
+  const salesByProduct = new Map<string, AllocationSale[]>();
+  for (const s of sales) {
+    const arr = salesByProduct.get(s.productId) ?? [];
+    arr.push(s);
+    salesByProduct.set(s.productId, arr);
+  }
+
+  const productIds = new Set<string>([...purchasesByProduct.keys(), ...salesByProduct.keys()]);
+
+  for (const productId of productIds) {
+    const layers: AllocLayer[] = (purchasesByProduct.get(productId) ?? [])
+      .slice()
+      .sort(byOrder)
+      .map((p) => ({
+        remainingBags: p.qtyBags,
+        costPerBag: D(p.kgPerBag).mul(D(p.ratePerKg)),
+        purchase: p,
+      }));
+
+    let head = 0;
+    for (const s of (salesByProduct.get(productId) ?? []).slice().sort(byOrder)) {
+      let need = s.qtyBags;
+      while (need > 0 && head < layers.length) {
+        const layer = layers[head];
+        const take = Math.min(need, layer.remainingBags);
+        draws.push({
+          saleId: s.id,
+          saleDisplayId: s.displayId,
+          buyerId: s.buyerId,
+          purchaseId: layer.purchase.id,
+          purchaseDisplayId: layer.purchase.displayId,
+          bags: take,
+          costPerBag: toMoney(layer.costPerBag),
+          ratePerKg: Number(layer.purchase.ratePerKg),
+          purchaseDate: String(layer.purchase.date).slice(0, 10),
+        });
+        layer.remainingBags -= take;
+        need -= take;
+        if (layer.remainingBags === 0) head++;
+      }
+      if (need > 0) uncostedBySale.set(s.id, need);
+    }
+
+    for (const layer of layers) {
+      remainingByLot.set(layer.purchase.displayId, layer.remainingBags);
+    }
+  }
+
+  return { draws, remainingByLot, uncostedBySale };
+}
