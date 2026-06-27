@@ -29,7 +29,17 @@ export const configRouter = router({
         defaultKgPerBag: z.number().positive(),
         defaultGstRate: z.string(),
         overdueDaysThreshold: z.number().int().positive(),
-        targetMarginFloorPct: z.string().nullable().optional(),
+        targetMarginFloorPct: z
+          .string()
+          .nullable()
+          .optional()
+          .refine(
+            (val) =>
+              val == null ||
+              val.trim() === "" ||
+              (Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) < 100),
+            { message: "Margin floor must be a number between 0 and 99.99" }
+          ),
       })
     )
     .mutation(async ({ ctx, input }) => {

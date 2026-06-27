@@ -906,7 +906,7 @@ export default function ProductsPage() {
                       type="number"
                       step="0.1"
                       min="0"
-                      max="100"
+                      max="99.99"
                       value={form.marginFloorPct}
                       onChange={(e) =>
                         setForm({ ...form, marginFloorPct: e.target.value })

@@ -110,6 +110,32 @@ describe("findUnderpricedSales", () => {
     const r = findUnderpricedSales(sales, floor4);
     expect(r.map((x) => x.saleId)).toEqual(["big", "small"]);
   });
+
+  it("skips a sale when resolved floor >= 100 (would cause Infinity)", () => {
+    // Sale is clearly underpriced (1% margin) but floor = 100 → division by zero → must be skipped.
+    const sales = [cs({ id: "X", revenue: 100000, cogs: 99000, totalKg: 1000 })];
+    const result = findUnderpricedSales(sales, () => 100);
+    expect(result).toHaveLength(0);
+  });
+
+  it("skips a sale when resolved floor < 0", () => {
+    // Negative floor is nonsensical; skip rather than produce a negative moneyLeftOnTable.
+    const sales = [cs({ id: "Y", revenue: 100000, cogs: 99000, totalKg: 1000 })];
+    const result = findUnderpricedSales(sales, () => -5);
+    expect(result).toHaveLength(0);
+  });
+
+  it("produces no Infinity or NaN in moneyLeftOnTable or minRatePerKg", () => {
+    const sales = [
+      cs({ id: "A", revenue: 100000, cogs: 99000, totalKg: 1000 }),
+      cs({ id: "B", revenue: 200000, cogs: 198000, totalKg: 2000 }),
+    ];
+    const results = findUnderpricedSales(sales, () => 100);
+    for (const r of results) {
+      expect(Number.isFinite(r.moneyLeftOnTable)).toBe(true);
+      expect(Number.isFinite(r.minRatePerKg)).toBe(true);
+    }
+  });
 });
 
 describe("buyerScorecard", () => {

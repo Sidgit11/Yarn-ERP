@@ -327,6 +327,7 @@ export default function SettingsPage() {
                 type="number"
                 step="0.01"
                 min="0"
+                max="99.99"
                 value={configForm.targetMarginFloorPct}
                 onChange={(e) =>
                   setConfigForm({

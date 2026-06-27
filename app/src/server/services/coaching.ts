@@ -75,6 +75,9 @@ export function findUnderpricedSales(
   for (const s of sales) {
     if (s.uncostedBags !== 0 || s.revenue <= 0) continue;
     const floor = floorFor(s.productId);
+    // Guard: a floor >= 100 makes revenueAtFloor = cogs/(1-floor/100) divide by zero → Infinity.
+    // A floor < 0 is nonsensical. Skip the sale rather than produce garbage output.
+    if (floor >= 100 || floor < 0) continue;
     const marginPct = marginPctOf(s);
     if (marginPct >= floor) continue;
     const revenueAtFloor = s.cogs / (1 - floor / 100);

@@ -5,7 +5,7 @@
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { config, products, purchases, sales, contacts } from "../db/schema";
-import { computeFifoAllocations } from "./fifoCosting";
+import { computeFifoAllocations, computeSaleCosting } from "./fifoCosting";
 import { D, toMoney } from "./calculations";
 import {
   resolveFloor,
@@ -81,12 +81,11 @@ export async function loadCoachingData(
   const buyerNameMap = new Map<string, string>();
   for (const c of contactRows) buyerNameMap.set(c.id, c.name);
 
+  // Use computeFifoAllocations for remainingByLot (aging-lots traceability).
   const alloc = computeFifoAllocations(purchaseRows, saleRows);
-
-  const cogsBySale = new Map<string, number>();
-  for (const dw of alloc.draws) {
-    cogsBySale.set(dw.saleId, (cogsBySale.get(dw.saleId) ?? 0) + dw.bags * dw.costPerBag);
-  }
+  // Use computeSaleCosting for canonical per-sale COGS + uncostedBags so /insights
+  // reconciles exactly with the Sales page (which also calls computeSaleCosting).
+  const saleCosting = computeSaleCosting(purchaseRows, saleRows);
 
   const from = range.from ?? null;
   const to = range.to ?? null;
@@ -106,9 +105,9 @@ export async function loadCoachingData(
       buyerName: buyerNameMap.get(s.buyerId) ?? "Unknown",
       date: dateIso,
       revenue,
-      cogs: toMoney(D(cogsBySale.get(s.id) ?? 0)),
+      cogs: saleCosting.get(s.id)?.cogs ?? 0,
       totalKg,
-      uncostedBags: alloc.uncostedBySale.get(s.id) ?? 0,
+      uncostedBags: saleCosting.get(s.id)?.uncostedBags ?? 0,
     });
   }
 
