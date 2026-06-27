@@ -50,3 +50,50 @@ export function computeBusinessAvgMargin(sales: CoachingSale[]): number {
   }
   return rev > 0 ? (margin / rev) * 100 : 0;
 }
+
+export interface UnderpricedSale {
+  saleId: string;
+  displayId: string;
+  productId: string;
+  buyerId: string;
+  buyerName: string;
+  date: string;
+  revenue: number;
+  cogs: number;
+  totalKg: number;
+  marginPct: number;
+  floorPct: number;
+  minRatePerKg: number;
+  moneyLeftOnTable: number;
+}
+
+export function findUnderpricedSales(
+  sales: CoachingSale[],
+  floorFor: (productId: string) => number
+): UnderpricedSale[] {
+  const out: UnderpricedSale[] = [];
+  for (const s of sales) {
+    if (s.uncostedBags !== 0 || s.revenue <= 0) continue;
+    const floor = floorFor(s.productId);
+    const marginPct = marginPctOf(s);
+    if (marginPct >= floor) continue;
+    const revenueAtFloor = s.cogs / (1 - floor / 100);
+    const costPerKg = s.totalKg > 0 ? s.cogs / s.totalKg : 0;
+    out.push({
+      saleId: s.id,
+      displayId: s.displayId,
+      productId: s.productId,
+      buyerId: s.buyerId,
+      buyerName: s.buyerName,
+      date: s.date,
+      revenue: s.revenue,
+      cogs: s.cogs,
+      totalKg: s.totalKg,
+      marginPct,
+      floorPct: floor,
+      minRatePerKg: minRatePerKg(costPerKg, floor),
+      moneyLeftOnTable: revenueAtFloor - s.revenue,
+    });
+  }
+  return out.sort((a, b) => b.moneyLeftOnTable - a.moneyLeftOnTable);
+}

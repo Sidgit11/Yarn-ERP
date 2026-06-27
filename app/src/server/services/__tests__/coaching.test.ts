@@ -5,6 +5,7 @@ import {
   resolveFloor,
   computeBusinessAvgMargin,
   marginPctOf,
+  findUnderpricedSales,
   type CoachingSale,
 } from "../coaching";
 
@@ -71,5 +72,41 @@ describe("marginPctOf", () => {
   });
   it("returns 0 for zero revenue", () => {
     expect(marginPctOf(cs({ id: "Z", revenue: 0, cogs: 0 }))).toBe(0);
+  });
+});
+
+describe("findUnderpricedSales", () => {
+  const floor4 = () => 4; // 4% floor for every product
+
+  it("flags a sale below floor with money left on table and min rate", () => {
+    // rev 100000, cogs 99000 -> margin 1% < 4%. totalKg 1000 -> cost/kg 99.
+    // revenueAtFloor = 99000/0.96 = 103125 -> left = 3125. minRate = 99/0.96 = 103.125
+    const sales = [cs({ id: "S1", revenue: 100000, cogs: 99000, totalKg: 1000 })];
+    const [r] = findUnderpricedSales(sales, floor4);
+    expect(r.saleId).toBe("S1");
+    expect(r.moneyLeftOnTable).toBeCloseTo(3125, 2);
+    expect(r.minRatePerKg).toBeCloseTo(103.125, 3);
+    expect(r.marginPct).toBeCloseTo(1, 4);
+    expect(r.floorPct).toBe(4);
+  });
+
+  it("does not flag a sale at or above floor", () => {
+    // margin exactly 4%
+    const sales = [cs({ id: "OK", revenue: 100000, cogs: 96000, totalKg: 1000 })];
+    expect(findUnderpricedSales(sales, floor4)).toHaveLength(0);
+  });
+
+  it("excludes uncosted sales from the result", () => {
+    const sales = [cs({ id: "U", revenue: 100000, cogs: 10000, uncostedBags: 3 })];
+    expect(findUnderpricedSales(sales, floor4)).toHaveLength(0);
+  });
+
+  it("ranks by money left on table, biggest first", () => {
+    const sales = [
+      cs({ id: "small", revenue: 100000, cogs: 99000, totalKg: 1000 }),
+      cs({ id: "big", revenue: 1000000, cogs: 990000, totalKg: 10000 }),
+    ];
+    const r = findUnderpricedSales(sales, floor4);
+    expect(r.map((x) => x.saleId)).toEqual(["big", "small"]);
   });
 });
