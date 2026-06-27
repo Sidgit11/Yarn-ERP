@@ -43,6 +43,7 @@ export const config = pgTable("config", {
   defaultKgPerBag: numeric("default_kg_per_bag", { precision: 8, scale: 2 }).default("100").notNull(),
   defaultGstRate: numeric("default_gst_rate", { precision: 5, scale: 2 }).default("5.00").notNull(),
   overdueDaysThreshold: integer("overdue_days_threshold").default(30).notNull(),
+  targetMarginFloorPct: numeric("target_margin_floor_pct", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -96,6 +97,7 @@ export const products = pgTable("products", {
   qualityGrade: qualityGradeEnum("quality_grade").notNull(),
   hsnCode: text("hsn_code"),
   colorShade: text("color_shade"),
+  marginFloorPct: numeric("margin_floor_pct", { precision: 5, scale: 2 }),
   active: boolean("active").default(true).notNull(),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
