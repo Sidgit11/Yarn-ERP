@@ -150,3 +150,47 @@ describe("buyerScorecard", () => {
     expect(buyerScorecard(sales, 4).map((x) => x.buyerId)).toEqual(["big", "small"]);
   });
 });
+
+import { agingLots, type RemainingLot } from "../coaching";
+
+function lot(o: Partial<RemainingLot> & { purchaseId: string }): RemainingLot {
+  return {
+    productId: "prod-1",
+    productName: "30s Cotton",
+    purchaseDisplayId: o.purchaseId,
+    purchaseDate: "2026-01-01",
+    remainingBags: 10,
+    costPerBag: 18000,
+    ...o,
+  };
+}
+
+describe("agingLots", () => {
+  const today = "2026-06-26";
+
+  it("flags a lot older than the threshold with age and capital tied", () => {
+    // 2026-01-01 -> 2026-06-26 is 176 days. capital = 10 * 18000 = 180000.
+    const [r] = agingLots([lot({ purchaseId: "P1" })], today);
+    expect(r.purchaseId).toBe("P1");
+    expect(r.ageDays).toBe(176);
+    expect(r.capitalTied).toBe(180000);
+  });
+
+  it("excludes lots younger than the threshold", () => {
+    // 30 days old < 60
+    const recent = lot({ purchaseId: "P2", purchaseDate: "2026-05-27" });
+    expect(agingLots([recent], today)).toHaveLength(0);
+  });
+
+  it("excludes lots with no remaining bags", () => {
+    expect(agingLots([lot({ purchaseId: "P3", remainingBags: 0 })], today)).toHaveLength(0);
+  });
+
+  it("ranks by capital tied times age", () => {
+    const lots = [
+      lot({ purchaseId: "small", remainingBags: 1, costPerBag: 1000 }),
+      lot({ purchaseId: "big", remainingBags: 50, costPerBag: 20000 }),
+    ];
+    expect(agingLots(lots, today).map((x) => x.purchaseId)).toEqual(["big", "small"]);
+  });
+});

@@ -140,3 +140,37 @@ export function buyerScorecard(sales: CoachingSale[], businessAvgPct: number): B
   }
   return out.sort((a, b) => b.moneyAtStake - a.moneyAtStake);
 }
+
+export interface RemainingLot {
+  productId: string;
+  productName: string;
+  purchaseId: string;
+  purchaseDisplayId: string;
+  purchaseDate: string; // YYYY-MM-DD
+  remainingBags: number;
+  costPerBag: number;
+}
+
+export interface AgingLot extends RemainingLot {
+  ageDays: number;
+  capitalTied: number;
+}
+
+const MS_PER_DAY = 86_400_000;
+
+function daysBetween(fromIso: string, toIso: string): number {
+  const a = Date.parse(fromIso + "T00:00:00Z");
+  const b = Date.parse(toIso + "T00:00:00Z");
+  return Math.floor((b - a) / MS_PER_DAY);
+}
+
+export function agingLots(lots: RemainingLot[], today: string): AgingLot[] {
+  const out: AgingLot[] = [];
+  for (const l of lots) {
+    if (l.remainingBags <= 0) continue;
+    const ageDays = daysBetween(l.purchaseDate, today);
+    if (ageDays < AGING_THRESHOLD_DAYS) continue;
+    out.push({ ...l, ageDays, capitalTied: l.remainingBags * l.costPerBag });
+  }
+  return out.sort((a, b) => b.capitalTied * b.ageDays - a.capitalTied * a.ageDays);
+}
