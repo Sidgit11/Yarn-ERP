@@ -29,6 +29,7 @@ export const configRouter = router({
         defaultKgPerBag: z.number().positive(),
         defaultGstRate: z.string(),
         overdueDaysThreshold: z.number().int().positive(),
+        targetMarginFloorPct: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -41,6 +42,10 @@ export const configRouter = router({
       const values = {
         ...input,
         defaultKgPerBag: String(input.defaultKgPerBag),
+        targetMarginFloorPct:
+          input.targetMarginFloorPct === undefined
+            ? undefined
+            : input.targetMarginFloorPct,
       };
 
       if (existing) {
