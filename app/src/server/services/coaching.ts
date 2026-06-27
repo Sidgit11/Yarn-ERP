@@ -174,3 +174,79 @@ export function agingLots(lots: RemainingLot[], today: string): AgingLot[] {
   }
   return out.sort((a, b) => b.capitalTied * b.ageDays - a.capitalTied * a.ageDays);
 }
+
+export interface MonthMargin {
+  month: string; // YYYY-MM
+  marginPct: number;
+  revenue: number;
+}
+
+export interface MarginTrendItem {
+  productId: string;
+  productName: string;
+  baselineMarginPct: number;
+  recentMarginPct: number;
+  dropPp: number;
+  recentRevenue: number;
+  months: MonthMargin[];
+}
+
+export function marginTrend(
+  sales: CoachingSale[],
+  productNames: Map<string, string>
+): MarginTrendItem[] {
+  // group by product -> month -> { revenue, margin }
+  const byProduct = new Map<string, Map<string, { revenue: number; margin: number }>>();
+  for (const s of sales) {
+    if (s.uncostedBags !== 0 || s.revenue <= 0) continue;
+    const month = s.date.slice(0, 7);
+    const months = byProduct.get(s.productId) ?? new Map();
+    const m = months.get(month) ?? { revenue: 0, margin: 0 };
+    m.revenue += s.revenue;
+    m.margin += s.revenue - s.cogs;
+    months.set(month, m);
+    byProduct.set(s.productId, months);
+  }
+
+  const out: MarginTrendItem[] = [];
+  for (const [productId, monthMap] of byProduct) {
+    const monthKeys = [...monthMap.keys()].sort();
+    if (monthKeys.length < 2) continue;
+
+    const months: MonthMargin[] = monthKeys.map((month) => {
+      const m = monthMap.get(month)!;
+      return { month, marginPct: m.revenue > 0 ? (m.margin / m.revenue) * 100 : 0, revenue: m.revenue };
+    });
+
+    const half = Math.floor(monthKeys.length / 2);
+    const front = monthKeys.slice(0, half);
+    const back = monthKeys.slice(monthKeys.length - half);
+
+    const weighted = (keys: string[]) => {
+      let rev = 0;
+      let margin = 0;
+      for (const k of keys) {
+        const m = monthMap.get(k)!;
+        rev += m.revenue;
+        margin += m.margin;
+      }
+      return { pct: rev > 0 ? (margin / rev) * 100 : 0, rev };
+    };
+
+    const baseline = weighted(front);
+    const recent = weighted(back);
+    const dropPp = baseline.pct - recent.pct;
+    if (dropPp < TREND_DROP_PP) continue;
+
+    out.push({
+      productId,
+      productName: productNames.get(productId) ?? productId,
+      baselineMarginPct: baseline.pct,
+      recentMarginPct: recent.pct,
+      dropPp,
+      recentRevenue: recent.rev,
+      months,
+    });
+  }
+  return out.sort((a, b) => b.dropPp * b.recentRevenue - a.dropPp * a.recentRevenue);
+}

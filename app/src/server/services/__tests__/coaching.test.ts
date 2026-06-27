@@ -194,3 +194,41 @@ describe("agingLots", () => {
     expect(agingLots(lots, today).map((x) => x.purchaseId)).toEqual(["big", "small"]);
   });
 });
+
+import { marginTrend } from "../coaching";
+
+describe("marginTrend", () => {
+  const names = new Map([["prod-1", "30s Cotton"], ["prod-2", "40s Combed"]]);
+
+  it("flags a product whose margin slipped across halves", () => {
+    // 4 months: front (Jan,Feb) ~10%, back (Mar,Apr) ~2%. drop 8pp.
+    const sales = [
+      cs({ id: "1", productId: "prod-1", date: "2026-01-10", revenue: 100000, cogs: 90000 }),
+      cs({ id: "2", productId: "prod-1", date: "2026-02-10", revenue: 100000, cogs: 90000 }),
+      cs({ id: "3", productId: "prod-1", date: "2026-03-10", revenue: 100000, cogs: 98000 }),
+      cs({ id: "4", productId: "prod-1", date: "2026-04-10", revenue: 100000, cogs: 98000 }),
+    ];
+    const [r] = marginTrend(sales, names);
+    expect(r.productId).toBe("prod-1");
+    expect(r.baselineMarginPct).toBeCloseTo(10, 4);
+    expect(r.recentMarginPct).toBeCloseTo(2, 4);
+    expect(r.dropPp).toBeCloseTo(8, 4);
+    expect(r.months).toHaveLength(4);
+  });
+
+  it("does not flag a stable product", () => {
+    const sales = [
+      cs({ id: "1", productId: "prod-2", date: "2026-01-10", revenue: 100000, cogs: 95000 }),
+      cs({ id: "2", productId: "prod-2", date: "2026-04-10", revenue: 100000, cogs: 95000 }),
+    ];
+    expect(marginTrend(sales, names)).toHaveLength(0);
+  });
+
+  it("skips products with only one month of data", () => {
+    const sales = [
+      cs({ id: "1", productId: "prod-1", date: "2026-01-10", revenue: 100000, cogs: 90000 }),
+      cs({ id: "2", productId: "prod-1", date: "2026-01-20", revenue: 100000, cogs: 99000 }),
+    ];
+    expect(marginTrend(sales, names)).toHaveLength(0);
+  });
+});
