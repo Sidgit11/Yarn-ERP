@@ -28,6 +28,7 @@ interface ProductFormData {
   qualityGrade: QualityGrade;
   hsnCode: string;
   colorShade: string;
+  marginFloorPct: string;
 }
 
 const emptyForm: ProductFormData = {
@@ -37,6 +38,7 @@ const emptyForm: ProductFormData = {
   qualityGrade: "Standard",
   hsnCode: "",
   colorShade: "",
+  marginFloorPct: "",
 };
 
 // --- Detail skeleton shown while loading expanded product ---
@@ -387,6 +389,7 @@ export default function ProductsPage() {
 
   const { data: productsList, isLoading } = trpc.products.list.useQuery();
   const { data: dashData } = trpc.dashboard.getMetrics.useQuery();
+  const { data: insightsData } = trpc.insights.getAll.useQuery({});
 
   // Build a map of product name → inventory from dashboard data
   const inventoryMap = useMemo(() => {
@@ -489,6 +492,7 @@ export default function ProductsPage() {
       qualityGrade: product.qualityGrade,
       hsnCode: product.hsnCode ?? "",
       colorShade: product.colorShade ?? "",
+      marginFloorPct: product.marginFloorPct ?? "",
     });
     setModalOpen(true);
   }
@@ -500,6 +504,7 @@ export default function ProductsPage() {
   }
 
   function handleSave() {
+    const trimmed = form.marginFloorPct.trim();
     const payload = {
       millBrand: form.millBrand,
       fibreType: form.fibreType,
@@ -507,6 +512,7 @@ export default function ProductsPage() {
       qualityGrade: form.qualityGrade,
       hsnCode: form.hsnCode || undefined,
       colorShade: form.colorShade || undefined,
+      marginFloorPct: trimmed === "" ? null : trimmed,
     };
 
     if (editingId) {
@@ -887,6 +893,36 @@ export default function ProductsPage() {
                     className="w-full px-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
                     placeholder="e.g. White, RFD, Melange Grey"
                   />
+                </div>
+
+                {/* Minimum Margin % */}
+                <div>
+                  <label className="block text-sm font-medium text-[#2C3E50] mb-1.5">
+                    Minimum Margin{" "}
+                    <span className="text-[#ADB5BD] font-normal">(optional)</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={form.marginFloorPct}
+                      onChange={(e) =>
+                        setForm({ ...form, marginFloorPct: e.target.value })
+                      }
+                      className="w-full px-3 py-3 pr-8 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
+                      placeholder="e.g. 6"
+                    />
+                    <span className="absolute right-3 text-[#6C757D] text-sm pointer-events-none">%</span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-[#6C757D]">
+                    Blank = use your global/auto floor (currently{" "}
+                    {insightsData
+                      ? `${Number(insightsData.globalOverride ?? insightsData.autoFloorPct).toFixed(1)}%`
+                      : "—"}
+                    ). Set a number to hold this yarn to its own minimum.
+                  </p>
                 </div>
 
                 {/* Full Name Preview */}
