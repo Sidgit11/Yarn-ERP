@@ -6,6 +6,7 @@ import {
   computeBusinessAvgMargin,
   marginPctOf,
   findUnderpricedSales,
+  buyerScorecard,
   type CoachingSale,
 } from "../coaching";
 
@@ -108,5 +109,44 @@ describe("findUnderpricedSales", () => {
     ];
     const r = findUnderpricedSales(sales, floor4);
     expect(r.map((x) => x.saleId)).toEqual(["big", "small"]);
+  });
+});
+
+describe("buyerScorecard", () => {
+  it("flags a below-average buyer with the right money at stake", () => {
+    // Business avg 4%. Buyer "squeeze": two sales, each rev 100000 margin 1000 => 1%.
+    // gap 3pp, totalRev 200000 -> moneyAtStake = 0.03 * 200000 = 6000.
+    const sales = [
+      cs({ id: "a", buyerId: "squeeze", buyerName: "Squeeze", revenue: 100000, cogs: 99000 }),
+      cs({ id: "b", buyerId: "squeeze", buyerName: "Squeeze", revenue: 100000, cogs: 99000 }),
+    ];
+    const [r] = buyerScorecard(sales, 4);
+    expect(r.buyerId).toBe("squeeze");
+    expect(r.weightedMarginPct).toBeCloseTo(1, 4);
+    expect(r.gapPct).toBeCloseTo(3, 4);
+    expect(r.moneyAtStake).toBeCloseTo(6000, 2);
+  });
+
+  it("excludes buyers at or above the business average", () => {
+    const sales = [
+      cs({ id: "a", buyerId: "good", revenue: 100000, cogs: 90000 }),
+      cs({ id: "b", buyerId: "good", revenue: 100000, cogs: 90000 }),
+    ];
+    expect(buyerScorecard(sales, 4)).toHaveLength(0); // 10% > 4%
+  });
+
+  it("excludes buyers below the minimum sale count", () => {
+    const sales = [cs({ id: "a", buyerId: "oneoff", revenue: 100000, cogs: 99000 })];
+    expect(buyerScorecard(sales, 4)).toHaveLength(0);
+  });
+
+  it("ranks by money at stake", () => {
+    const sales = [
+      cs({ id: "a", buyerId: "small", revenue: 100000, cogs: 99000 }),
+      cs({ id: "b", buyerId: "small", revenue: 100000, cogs: 99000 }),
+      cs({ id: "c", buyerId: "big", revenue: 1000000, cogs: 990000 }),
+      cs({ id: "d", buyerId: "big", revenue: 1000000, cogs: 990000 }),
+    ];
+    expect(buyerScorecard(sales, 4).map((x) => x.buyerId)).toEqual(["big", "small"]);
   });
 });

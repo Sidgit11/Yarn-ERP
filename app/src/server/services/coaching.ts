@@ -97,3 +97,46 @@ export function findUnderpricedSales(
   }
   return out.sort((a, b) => b.moneyLeftOnTable - a.moneyLeftOnTable);
 }
+
+export interface BuyerScore {
+  buyerId: string;
+  buyerName: string;
+  saleCount: number;
+  totalRevenue: number;
+  weightedMarginPct: number;
+  gapPct: number;
+  moneyAtStake: number;
+}
+
+export function buyerScorecard(sales: CoachingSale[], businessAvgPct: number): BuyerScore[] {
+  const agg = new Map<
+    string,
+    { name: string; count: number; revenue: number; margin: number }
+  >();
+  for (const s of sales) {
+    if (s.uncostedBags !== 0 || s.revenue <= 0) continue;
+    const a = agg.get(s.buyerId) ?? { name: s.buyerName, count: 0, revenue: 0, margin: 0 };
+    a.count += 1;
+    a.revenue += s.revenue;
+    a.margin += s.revenue - s.cogs;
+    a.name = s.buyerName;
+    agg.set(s.buyerId, a);
+  }
+  const out: BuyerScore[] = [];
+  for (const [buyerId, a] of agg) {
+    if (a.count < MIN_BUYER_SALES) continue;
+    const weightedMarginPct = a.revenue > 0 ? (a.margin / a.revenue) * 100 : 0;
+    if (weightedMarginPct >= businessAvgPct) continue;
+    const gapPct = businessAvgPct - weightedMarginPct;
+    out.push({
+      buyerId,
+      buyerName: a.name,
+      saleCount: a.count,
+      totalRevenue: a.revenue,
+      weightedMarginPct,
+      gapPct,
+      moneyAtStake: (gapPct / 100) * a.revenue,
+    });
+  }
+  return out.sort((a, b) => b.moneyAtStake - a.moneyAtStake);
+}
