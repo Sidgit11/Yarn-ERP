@@ -416,6 +416,17 @@ export const productsRouter = router({
       qualityGrade: z.enum(["Top", "Standard", "Economy"]),
       hsnCode: z.string().optional(),
       colorShade: z.string().optional(),
+      marginFloorPct: z
+        .string()
+        .nullable()
+        .optional()
+        .refine(
+          (val) =>
+            val == null ||
+            val.trim() === "" ||
+            (Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) < 100),
+          { message: "Margin floor must be a number between 0 and 99.99" }
+        ),
     }))
     .mutation(async ({ ctx, input }) => {
       const result = await ctx.db.insert(products).values({
@@ -426,6 +437,7 @@ export const productsRouter = router({
         qualityGrade: input.qualityGrade,
         hsnCode: input.hsnCode || null,
         colorShade: input.colorShade || null,
+        marginFloorPct: input.marginFloorPct ?? null,
       }).returning();
       return result[0];
     }),
@@ -439,6 +451,17 @@ export const productsRouter = router({
       qualityGrade: z.enum(["Top", "Standard", "Economy"]),
       hsnCode: z.string().optional(),
       colorShade: z.string().optional(),
+      marginFloorPct: z
+        .string()
+        .nullable()
+        .optional()
+        .refine(
+          (val) =>
+            val == null ||
+            val.trim() === "" ||
+            (Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) < 100),
+          { message: "Margin floor must be a number between 0 and 99.99" }
+        ),
     }))
     .mutation(async ({ ctx, input }) => {
       const result = await ctx.db.update(products)
@@ -449,6 +472,7 @@ export const productsRouter = router({
           qualityGrade: input.qualityGrade,
           hsnCode: input.hsnCode || null,
           colorShade: input.colorShade || null,
+          marginFloorPct: input.marginFloorPct,
           updatedAt: new Date(),
         })
         .where(and(eq(products.id, input.id), eq(products.tenantId, ctx.tenantId)))

@@ -12,6 +12,7 @@ import { dashboardRouter } from "./routers/dashboard";
 import { exportRouter } from "./routers/export";
 import { importRouter } from "./routers/import";
 import { trendsRouter } from "./routers/trends";
+import { insightsRouter } from "./routers/insights";
 
 export const appRouter = router({
   contacts: contactsRouter,
@@ -25,6 +26,7 @@ export const appRouter = router({
   recon: reconRouter,
   dashboard: dashboardRouter,
   trends: trendsRouter,
+  insights: insightsRouter,
   export: exportRouter,
   import: importRouter,
 });

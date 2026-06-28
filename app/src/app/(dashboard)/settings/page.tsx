@@ -13,6 +13,7 @@ interface ConfigFormData {
   defaultKgPerBag: string;
   defaultGstRate: string;
   overdueDaysThreshold: string;
+  targetMarginFloorPct: string;
 }
 
 const defaultConfig: ConfigFormData = {
@@ -21,6 +22,7 @@ const defaultConfig: ConfigFormData = {
   defaultKgPerBag: "100",
   defaultGstRate: "5",
   overdueDaysThreshold: "30",
+  targetMarginFloorPct: "",
 };
 
 // Financial year months Apr(1) - Mar(12)
@@ -132,6 +134,7 @@ export default function SettingsPage() {
         defaultKgPerBag: String(data.config.defaultKgPerBag),
         defaultGstRate: data.config.defaultGstRate,
         overdueDaysThreshold: String(data.config.overdueDaysThreshold),
+        targetMarginFloorPct: data.config.targetMarginFloorPct ?? "",
       });
     }
     if (data?.monthlyInterest) {
@@ -156,6 +159,10 @@ export default function SettingsPage() {
       defaultKgPerBag: kgPerBag,
       defaultGstRate: configForm.defaultGstRate,
       overdueDaysThreshold: overdueDays,
+      targetMarginFloorPct:
+        configForm.targetMarginFloorPct.trim() === ""
+          ? null
+          : configForm.targetMarginFloorPct.trim(),
     });
   }
 
@@ -307,6 +314,38 @@ export default function SettingsPage() {
               }
               className="w-full px-3 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
             />
+          </div>
+
+          {/* Margin Floor */}
+          <div>
+            <label className="block text-sm font-medium text-[#2C3E50] mb-1.5">
+              Margin Floor{" "}
+              <span className="font-normal text-[#6C757D]">(optional)</span>
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="99.99"
+                value={configForm.targetMarginFloorPct}
+                onChange={(e) =>
+                  setConfigForm({
+                    ...configForm,
+                    targetMarginFloorPct: e.target.value,
+                  })
+                }
+                className="w-full pl-3 pr-8 py-3 min-h-[48px] border border-[#DEE2E6] rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2980B9] focus:border-transparent"
+                placeholder=""
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6C757D] text-base font-medium">
+                %
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-[#6C757D]">
+              Leave blank to auto-set from your average margin. Underpriced-sale
+              and buyer-squeeze alerts use this floor.
+            </p>
           </div>
         </div>
 
